@@ -167,11 +167,11 @@
     ambitos(tr.dataset.id).forEach((z) => pintarFila(z, modelo[tr.dataset.id]));
   });
 
-  // Si el DataTable vuelve a crear las filas (buscar, paginar, ordenar), se vuelven a pintar desde el modelo.
+  // Si el DataTable vuelve a crear las filas (buscar, paginar, ordenar, desplegar con el "+"), se vuelven a pintar desde el modelo.
   let repintando = false;
   new MutationObserver((cambios) => {
     const hayFilas = cambios.some((c) => Array.prototype.some.call(c.addedNodes, (n) =>
-      n.nodeType === 1 && (n.matches('tr[data-id], tr.child') || n.querySelector('tr[data-id]'))));
+      n.nodeType === 1 && (n.matches('tr[data-id], tr.child') || n.querySelector('tr[data-id], tr.child'))));
     if (!hayFilas || repintando) return;
     repintando = true;
     requestAnimationFrame(() => { repintando = false; repintarVisibles(); });
@@ -195,8 +195,8 @@
     if (!m.entradaAbierta) {
       m.entradaAbierta = true;
       refrescar(m);
-      const tr = filaVisible(m.id);
-      const inp = tr && tr.querySelector('.inp-entrada');
+      const zonas = ambitos(m.id);
+      const inp = zonas.length ? zonas[zonas.length - 1].querySelector('.inp-entrada') : null;
       if (inp) { inp.focus(); inp.select(); }
     } else {
       m.entrada = m.entradaOriginal;
@@ -266,7 +266,7 @@
       (n ? ' · ' + n + (n === 1 ? ' foto sumada' : ' fotos sumadas') : '');
   }
 
-  /** Sin cámara en vivo (p. ej. HTTP en el teléfono): se destaca "Cámara / archivo", que abre la cámara nativa. */
+  /** Sin cámara en vivo (p. ej. HTTP en el teléfono): se destaca "Galería / archivo". */
   function soloArchivo(on) {
     el.capturar.disabled = on;
     el.subir.classList.toggle('btn-outline-secondary', !on);
@@ -324,7 +324,7 @@
     soloArchivo(false);
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       soloArchivo(true);
-      mostrarError('La cámara en vivo no está disponible (requiere HTTPS). Use "Cámara / archivo" para tomar la foto con el dispositivo.');
+      mostrarError('La cámara en vivo no está disponible (requiere HTTPS). Use "Galería / archivo" para tomar la foto o elegir una ya tomada.');
       return;
     }
     try {
@@ -332,7 +332,7 @@
       el.video.srcObject = stream;
     } catch (e) {
       soloArchivo(true);
-      mostrarError('No se pudo abrir la cámara. Revise el permiso o use "Cámara / archivo".');
+      mostrarError('No se pudo abrir la cámara. Revise el permiso o use "Galería / archivo".');
     }
   }
 
@@ -395,6 +395,8 @@
     modoPrevia(blob);
   });
   el.repetir.addEventListener('click', () => { detenerCamara(); iniciarVideo(); });
+
+  // Galería / archivos (sin "capture": en el celular deja elegir galería, archivos o cámara)
   el.subir.addEventListener('click', () => el.archivo.click());
   el.archivo.addEventListener('change', (ev) => {
     const f = ev.target.files[0];
@@ -410,6 +412,7 @@
     img.onerror = () => mostrarError('No se pudo leer esa imagen. Pruebe con otra foto (JPG o PNG).');
     img.src = window.URL.createObjectURL(f);
   });
+
   el.usar.addEventListener('click', () => confirmarFoto(false));
   el.otra.addEventListener('click', () => confirmarFoto(true));
   el.modal.addEventListener('hidden.bs.modal', () => { detenerCamara(); modoVivo(); mostrarError(''); camCtx = null; });
@@ -477,7 +480,7 @@
     if (!m) return;
     inp.value = inp.value.replace(/[^0-9.,]/g, '');                       // solo cifras y separador decimal
     m[inp.classList.contains('inp-entrada') ? 'entrada' : inp.classList.contains('inp-agregar') ? 'agregar' : 'existencia'] = inp.value;
-    pintarCalculo(inp.closest('tr'), m);
+    ambitos(m.id).forEach((z) => pintarCalculo(z, m));                    // la fila y su fila desplegada ("+")
     progreso(); revisarAjustes();
   });
 

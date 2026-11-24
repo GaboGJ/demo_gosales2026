@@ -1,6 +1,7 @@
 <?php
 /* MODAL "PLANILLA" — se incluye desde index.php y edit.php.
-   Define: verDetalleProduccion(id, imprimir = false) e imprimirProduccion(id).
+   Define: verDetalleProduccion(id) e imprimirProduccion(id).
+   imprimirProduccion imprime directo (sin abrir el modal): Producción arriba y Existencia abajo.
    Si la página que lo incluye define $enEdicion = true, oculta el botón "Continuar registro".
 
    ============ DATOS DE PRUEBA (reemplazar por datos del backend; mismo formato) ============ */
@@ -75,24 +76,29 @@ $planillas = [
 $enEdicion = $enEdicion ?? false;
 ?>
 <style>
+  /* ===== Hoja de impresión (se arma en #areaImpresion, hijo directo de <body>) ===== */
+  #areaImpresion { display: none; }
   @media print {
-    body * { visibility: hidden !important; }
-    #modalPlanilla, #modalPlanilla .modal-dialog, #modalPlanilla .modal-content,
-    #planillaImprimible, #planillaImprimible * { visibility: visible !important; }
-    #modalPlanilla { position: absolute !important; left: 0; top: 0; width: 100%; overflow: visible !important; display: block !important; }
-    #modalPlanilla .modal-dialog { margin: 0 !important; max-width: 100% !important; }
-    #modalPlanilla .modal-content { border: 0 !important; box-shadow: none !important; }
-    #modalPlanilla .modal-body { overflow: visible !important; max-height: none !important; }
-    .modal-backdrop { display: none !important; }
-    .no-print, .no-print * { display: none !important; }
+    body.imprimiendo-planilla > *:not(#areaImpresion) { display: none !important; }
+    body.imprimiendo-planilla #areaImpresion { display: block !important; padding: 8px; color: #000; }
   }
+  #areaImpresion .pi-cab { text-align: center; margin-bottom: 10px; }
+  #areaImpresion .pi-cab h2 { margin: 0; font-size: 18px; text-transform: uppercase; }
+  #areaImpresion .pi-datos { display: flex; justify-content: space-between; font-size: 12px; border-top: 1px solid #444; border-bottom: 1px solid #444; padding: 6px 0; margin-bottom: 4px; }
+  #areaImpresion .pi-titulo { font-size: 14px; font-weight: 700; text-transform: uppercase; margin: 14px 0 6px; }
+  #areaImpresion .pi-seccion { page-break-inside: avoid; }
+  #areaImpresion .pi-tabla { width: 100%; border-collapse: collapse; font-size: 12px; }
+  #areaImpresion .pi-tabla th, #areaImpresion .pi-tabla td { border: 1px solid #444; padding: 4px 8px; }
+  #areaImpresion .pi-tabla th { background: #eee; text-transform: uppercase; font-size: 11px; }
+  #areaImpresion .pi-tabla td.n { text-align: right; }
+  #areaImpresion .pi-firma { margin: 60px auto 0; width: 260px; border-top: 1px solid #000; text-align: center; padding-top: 4px; font-size: 12px; text-transform: uppercase; }
 </style>
 
 <div class="modal fade" id="modalPlanilla" tabindex="-1" aria-labelledby="tituloPlanilla" aria-hidden="true">
   <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content border-radius-xl">
 
-      <div class="modal-header border-0 pb-0 px-4 pt-4 no-print">
+      <div class="modal-header border-0 pb-0 px-4 pt-4">
         <div>
           <h5 class="modal-title font-weight-bolder text-dark mb-0" id="tituloPlanilla">Planilla de Producción</h5>
           <p class="text-xs text-secondary mb-0">Vista de la planilla tal como va el registro del turno.</p>
@@ -104,11 +110,11 @@ $enEdicion = $enEdicion ?? false;
         <div id="planillaContenido" class="text-center text-sm text-secondary py-5">Cargando planilla...</div>
       </div>
 
-      <div class="modal-footer border-0 pt-0 px-4 pb-4 d-flex flex-wrap gap-2 no-print">
+      <div class="modal-footer border-0 pt-0 px-4 pb-4 d-flex flex-wrap gap-2">
         <a href="#" id="planillaEditar" class="btn bg-gradient-primary text-white mb-0 border-radius-md px-3 d-none align-items-center gap-2">
           <i class="material-symbols-rounded text-sm">edit_note</i><span class="font-weight-bold">Continuar registro</span>
         </a>
-        <button type="button" class="btn btn-outline-primary mb-0 border-radius-md px-3 d-inline-flex align-items-center gap-2" onclick="window.print()">
+        <button type="button" class="btn btn-outline-primary mb-0 border-radius-md px-3 d-inline-flex align-items-center gap-2" onclick="imprimirProduccion()">
           <i class="material-symbols-rounded text-sm">print</i><span class="font-weight-bold">Imprimir</span>
         </button>
         <button type="button" class="btn btn-outline-secondary mb-0 border-radius-md px-3" data-bs-dismiss="modal">Cerrar</button>
@@ -123,6 +129,7 @@ $enEdicion = $enEdicion ?? false;
   const BASE = <?= json_encode(URL) ?>;
   const EN_EDICION = <?= json_encode((bool)$enEdicion) ?>;
   const PLANILLAS = <?= json_encode($planillas, JSON_UNESCAPED_UNICODE) ?>;   // BACKEND: reemplazar por fetch a la planilla
+  let actual = null;   // id de la planilla que se está viendo en el modal
 
   const fmt = (n) => Number(n).toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -131,9 +138,10 @@ $enEdicion = $enEdicion ?? false;
   const TH = 'text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 py-3 border-bottom border-light';
 
   const enlaceFoto = (url) => url
-    ? '<a href="' + esc(url) + '" target="_blank" rel="noopener" class="text-primary ms-1 no-print" title="Ver foto de respaldo"><i class="material-symbols-rounded text-sm align-middle">photo_camera</i></a>'
+    ? '<a href="' + esc(url) + '" target="_blank" rel="noopener" class="text-primary ms-1" title="Ver foto de respaldo"><i class="material-symbols-rounded text-sm align-middle">photo_camera</i></a>'
     : '';
 
+  /* ---------- Vista del modal ---------- */
   function render(d) {
     const p = d.produccion;
     const t = TURNO[p.turno] || TURNO['Mañana'];
@@ -173,22 +181,51 @@ $enEdicion = $enEdicion ?? false;
           '<div class="col-6 col-md-3"><span class="text-xxs text-secondary font-weight-bold text-uppercase d-block mb-1">Turno</span><span class="badge badge-sm ' + t[0] + ' border-radius-pill px-3 py-1 font-weight-bold d-inline-flex align-items-center gap-1"><i class="material-symbols-rounded text-sm">' + t[1] + '</i>' + esc(p.turno) + '</span></div>' +
           '<div class="col-6 col-md-4"><span class="text-xxs text-secondary font-weight-bold text-uppercase d-block">Encargado</span><span class="text-sm font-weight-bolder text-primary">' + esc(p.responsable) + '</span></div>' +
         '</div>' +
-        '<div class="mt-3 no-print"><div class="d-flex justify-content-between text-xxs font-weight-bold text-secondary text-uppercase mb-1"><span>Existencia contada</span><span>' + p.contados + ' / ' + p.total + '</span></div>' +
+        '<div class="mt-3"><div class="d-flex justify-content-between text-xxs font-weight-bold text-secondary text-uppercase mb-1"><span>Existencia contada</span><span>' + p.contados + ' / ' + p.total + '</span></div>' +
         '<div class="progress" style="height:8px"><div class="progress-bar bg-gradient-primary" role="progressbar" style="width:' + pct + '%"></div></div></div></div>' +
         '<div class="table-responsive px-3 pt-2"><table class="table table-borderless align-items-center mb-0 w-100"><thead><tr>' +
           '<th class="' + TH + '">Productos</th><th class="text-center ' + TH + ' px-3">Entrada</th><th class="text-center ' + TH + ' px-3">Producción</th><th class="text-center ' + TH + ' px-3">Existencia</th><th class="text-center ' + TH + ' ps-3">Salida / Consumo</th>' +
         '</tr></thead><tbody>' + filas + '</tbody></table></div>' +
-        '<p class="text-xxs text-secondary px-3 mt-2 mb-0">Salida / consumo = entrada + producción − existencia.</p>' +
-        '<div class="px-3 pb-3 pt-5 d-flex justify-content-center"><div class="text-center" style="min-width:260px"><div class="border-top border-dark pt-2 text-xs font-weight-bold text-dark text-uppercase">Firma del encargado</div></div></div>' +
+        '<p class="text-xxs text-secondary px-3 mt-2 mb-3">Salida / consumo = entrada + producción − existencia.</p>' +
       '</div>' +
-      '<div class="mt-4 no-print"><h6 class="font-weight-bolder text-dark mb-0">Historial de producción registrada</h6>' +
+      '<div class="mt-4"><h6 class="font-weight-bolder text-dark mb-0">Historial de producción registrada</h6>' +
         '<p class="text-xs text-secondary mb-2">Cada guardado de producción queda registrado con su hora y su foto de respaldo.</p>' +
         '<div class="table-responsive"><table class="table table-borderless align-items-center mb-0 w-100"><thead><tr>' +
           '<th class="' + TH + '">Hora</th><th class="' + TH + ' px-3">Producto</th><th class="text-end ' + TH + ' px-3">Cantidad</th><th class="text-center ' + TH + ' ps-3">Foto</th>' +
         '</tr></thead><tbody>' + hist + '</tbody></table></div></div>';
   }
 
-  window.verDetalleProduccion = function (id, imprimir) {
+  /* ---------- Hoja de impresión: Producción arriba, Existencia abajo ---------- */
+  function renderImpresion(d) {
+    const p = d.produccion;
+    const filasProd = d.items.map((it) =>
+      '<tr><td>' + esc(it.producto) + '</td><td>' + esc(it.medida) + '</td>' +
+      '<td class="n">' + fmt(it.entrada) + '</td><td class="n">' + fmt(it.producido) + '</td>' +
+      '<td class="n"><b>' + fmt(Number(it.entrada) + Number(it.producido)) + '</b></td></tr>').join('');
+    const filasExis = d.items.map((it) => {
+      const contado = it.existencia !== null;
+      return '<tr><td>' + esc(it.producto) + '</td><td>' + esc(it.medida) + '</td>' +
+        '<td class="n"><b>' + (contado ? fmt(it.existencia) : '&nbsp;') + '</b></td>' +
+        '<td class="n">' + (contado ? fmt(it.salida) : '&nbsp;') + '</td></tr>';
+    }).join('');
+
+    return '' +
+      '<div class="pi-cab"><h2>' + esc(p.sucursal) + '</h2></div>' +
+      '<div class="pi-datos"><span><b>Planilla:</b> #' + esc(p.codigo) + '</span><span><b>Fecha:</b> ' + esc(p.fecha) +
+      '</span><span><b>Turno:</b> ' + esc(p.turno) + '</span><span><b>Encargado:</b> ' + esc(p.responsable) + '</span></div>' +
+      '<div class="pi-seccion"><div class="pi-titulo">Producción</div>' +
+        '<table class="pi-tabla"><thead><tr><th>Producto</th><th>Unid.</th><th>Entrada</th><th>Producción</th><th>Total</th></tr></thead>' +
+        '<tbody>' + filasProd + '</tbody></table></div>' +
+      '<div class="pi-seccion"><div class="pi-titulo">Existencia</div>' +
+        '<table class="pi-tabla"><thead><tr><th>Producto</th><th>Unid.</th><th>Existencia</th><th>Salida / Consumo</th></tr></thead>' +
+        '<tbody>' + filasExis + '</tbody></table>' +
+        '<div style="font-size:11px;margin-top:4px">Salida / consumo = entrada + producción − existencia.</div></div>' +
+      '<div class="pi-firma">Firma del encargado</div>';
+  }
+
+  /* ---------- API pública ---------- */
+  window.verDetalleProduccion = function (id) {
+    actual = id;
     const contenido = document.getElementById('planillaContenido');
     const btnEditar = document.getElementById('planillaEditar');
     btnEditar.classList.add('d-none');
@@ -208,9 +245,19 @@ $enEdicion = $enEdicion ?? false;
       }
     }
     bootstrap.Modal.getOrCreateInstance(document.getElementById('modalPlanilla')).show();
-    if (d && imprimir) setTimeout(() => window.print(), 400);
   };
 
-  window.imprimirProduccion = function (id) { window.verDetalleProduccion(id, true); };
+  // Imprime sin abrir el modal: arma la hoja en #areaImpresion y oculta el resto de la página al imprimir.
+  window.imprimirProduccion = function (id) {
+    const d = PLANILLAS[id || actual];
+    if (!d) return;
+    let area = document.getElementById('areaImpresion');
+    if (!area) { area = document.createElement('div'); area.id = 'areaImpresion'; document.body.appendChild(area); }
+    area.innerHTML = renderImpresion(d);
+    document.body.classList.add('imprimiendo-planilla');
+    const limpiar = () => { document.body.classList.remove('imprimiendo-planilla'); window.removeEventListener('afterprint', limpiar); };
+    window.addEventListener('afterprint', limpiar);
+    window.print();
+  };
 })();
 </script>

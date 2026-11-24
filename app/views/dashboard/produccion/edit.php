@@ -102,31 +102,17 @@ $campoPeso = function (int $idp, string $tipo, string $medida, $valor, string $p
   #datatable-edicion .foto-mas { display: inline-flex; align-items: center; justify-content: center; background: #344767; color: #fff; font-size: .6rem; font-weight: 700; }
   #datatable-edicion .foto-peso { font-size: .75rem; font-weight: 700; color: #344767; white-space: nowrap; }
 
-  /* ===== Tabla (escritorio) ===== */
+  /* ===== Tabla: comportamiento normal del DataTable responsive (con el "+" para desplegar) ===== */
   #datatable-edicion td { padding-top: .85rem; padding-bottom: .85rem; vertical-align: top; }
   #datatable-edicion tbody tr { border-bottom: 1px solid #f0f2f5; }
   #datatable-edicion .celda-campo { width: 100%; max-width: 230px; margin: 0 auto; }
   #datatable-edicion .col-salida { min-width: 110px; }
   #datatable-edicion tr.fila-ajustada > td { background: #fff8e1; }
 
-  /* ===== Móvil / tablet: cada fila pasa a ser una tarjeta (nada se sale de la pantalla) ===== */
-  @media (max-width: 991.98px) {
-    #datatable-edicion, #datatable-edicion tbody { display: block; width: 100% !important; }
-    #datatable-edicion thead { display: none; }
-    #datatable-edicion tbody tr { display: block; margin: .75rem; padding: .75rem .9rem; background: #fff;
-      border: 1px solid #e9ecef !important; border-radius: .75rem; }
-    #datatable-edicion tr.fila-ajustada { background: #fff8e1; border-color: #ffe0a3 !important; }
-    #datatable-edicion tbody td { display: flex; align-items: flex-start; gap: .75rem; width: auto !important;
-      padding: .35rem 0 !important; border: 0 !important; background: transparent !important; }
-    #datatable-edicion tbody td::before { content: attr(data-label); flex: 0 0 82px; padding-top: .8rem;
-      font-size: .62rem; font-weight: 700; text-transform: uppercase; color: #8392ab; }
-    #datatable-edicion td.celda-producto { padding-bottom: .6rem !important; margin-bottom: .25rem; border-bottom: 1px solid #f0f2f5 !important; }
-    #datatable-edicion td.celda-producto::before { display: none; }
-    #datatable-edicion .celda-campo { flex: 1 1 auto; min-width: 0; max-width: none; margin: 0; }
-    #datatable-edicion td.col-salida { align-items: center; min-width: 0; }
-    #datatable-edicion td.col-salida::before { padding-top: 0; }
-    #datatable-edicion td.col-salida > .salida-wrap { flex: 1 1 auto; text-align: right; }
-  }
+  /* Fila desplegada (la que muestra el "+") */
+  #datatable-edicion tr.child .celda-campo { max-width: none; min-width: 180px; margin: 0; }
+  #datatable-edicion tr.child .salida-wrap { padding-top: 0 !important; }
+  #datatable-edicion tr.child ul.dtr-details { display: block; width: 100%; }
 </style>
 
 <style>
@@ -144,9 +130,6 @@ $campoPeso = function (int $idp, string $tipo, string $medida, $valor, string $p
     .prod-edit .reg-card .card-footer { padding: .75rem !important; }
     .prod-edit .reg-card .card-footer .btn { padding-top: .55rem; padding-bottom: .55rem; }
     .prod-edit .cab-card, .prod-edit .reg-card { margin-bottom: .6rem !important; }
-    #datatable-edicion tbody tr { margin: .5rem !important; padding: .6rem .7rem !important; }
-    #datatable-edicion tbody td { padding: .25rem 0 !important; }
-    #datatable-edicion tbody td::before { padding-top: .65rem; flex-basis: 74px; }
   }
 </style>
 <div class="container-fluid prod-edit pt-3 pb-5 flex-grow-1">
@@ -206,13 +189,14 @@ $campoPeso = function (int $idp, string $tipo, string $medida, $valor, string $p
       <div class="table-responsive p-0">
         <table id="datatable-edicion" class="table align-items-center mb-0">
           <thead>
-            <!-- class="all": el DataTable responsive no oculta estas columnas; en pantallas chicas la fila se muestra como tarjeta (CSS) -->
+            <!-- Producto siempre visible (class="all"). Las demás columnas se ocultan según data-priority
+                 (1 = la última en ocultarse) y se ven al tocar el "+" de la fila. -->
             <tr>
-              <th class="all text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 ps-3 ps-md-4">Producto</th>
-              <th class="all text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 text-center">Entrada</th>
-              <th class="all text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 text-center">Producción (+)</th>
-              <th class="all text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 text-center">Existencia</th>
-              <th class="all text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 text-center pe-3 pe-md-4">Salida / Consumo</th>
+              <th class="all text-uppercase text-secondary text-xxs font-weight-bolder opacity-7">Producto</th>
+              <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 text-center">Entrada</th>
+              <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 text-center">Producción (+)</th>
+              <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 text-center">Existencia</th>
+              <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 text-center pe-3 pe-md-4">Salida / Consumo</th>
             </tr>
           </thead>
           <tbody>
@@ -224,7 +208,7 @@ $campoPeso = function (int $idp, string $tipo, string $medida, $valor, string $p
               <tr data-id="<?= $idp; ?>">
 
                 <!-- Producto -->
-                <td class="celda-producto ps-3 ps-md-4" data-label="Producto">
+                <td class="celda-producto" data-label="Producto">
                   <div class="d-flex align-items-center gap-2 pt-1">
                     <div class="avatar avatar-sm bg-gradient-primary border-radius-md d-flex align-items-center justify-content-center flex-shrink-0 text-white">
                       <i class="material-symbols-rounded text-sm">inventory_2</i>
@@ -255,7 +239,6 @@ $campoPeso = function (int $idp, string $tipo, string $medida, $valor, string $p
                 <td data-label="Producción (+)">
                   <div class="celda-campo">
                     <?php $campoPeso($idp, 'produccion', $it['medida'], '', '0'); ?>
-                    
                   </div>
                 </td>
 
@@ -324,12 +307,15 @@ $campoPeso = function (int $idp, string $tipo, string $medida, $valor, string $p
           <img id="camPreview" alt="Vista previa" class="d-none object-fit-contain">
         </div>
         <canvas id="camCanvas" class="d-none"></canvas>
-        <input type="file" id="camArchivo" accept="image/*" capture="environment" class="d-none">
+        <!-- Sin "capture": en el celular abre galería / archivos / cámara a elección -->
+        <input type="file" id="camArchivo" accept="image/*" class="d-none">
         <div id="camError" class="text-xs text-danger font-weight-bold mt-2 d-none"></div>
         <div id="camLectura" class="text-sm font-weight-bold mt-2 d-none"></div>
       </div>
       <div class="modal-footer border-0 pt-0 px-3 px-md-4 pb-3 pb-md-4 d-flex flex-wrap gap-2">
-        <button type="button" class="btn btn-outline-secondary mb-0 px-3 flex-fill flex-sm-grow-0" id="camSubir">Cámara / archivo</button>
+        <button type="button" class="btn btn-outline-secondary mb-0 px-3 flex-fill flex-sm-grow-0" id="camSubir">
+          <i class="material-symbols-rounded text-sm align-middle me-1">photo_library</i>Galería / archivo
+        </button>
         <button type="button" class="btn btn-outline-primary mb-0 px-3 flex-fill flex-sm-grow-0 d-none" id="camRepetir">Repetir</button>
         <button type="button" class="btn bg-gradient-primary text-white mb-0 px-3 flex-fill flex-sm-grow-0" id="camCapturar">Capturar</button>
         <button type="button" class="btn btn-outline-success mb-0 px-3 flex-fill flex-sm-grow-0 d-none" id="camOtra">Sumar y tomar otra</button>
