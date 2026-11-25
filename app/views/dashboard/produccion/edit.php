@@ -51,7 +51,7 @@ foreach ($items as $i => $it) {
   ];
 }
 
-// Campo de cantidad (Producción o Existencia): [ input | unidad | cámara ] y debajo, en una sola línea,
+// Campo de cantidad (Producción o Existencia): [ input | cámara ] y debajo, en una sola línea,
 // las fotos sumadas (miniaturas juntas + último peso leído). Las unidades ('u') se cuentan a mano: sin cámara.
 $campoPeso = function (int $idp, string $tipo, string $medida, $valor, string $placeholder) {
   $clase = $tipo === 'produccion' ? 'inp-agregar' : 'inp-existencia';
@@ -61,7 +61,7 @@ $campoPeso = function (int $idp, string $tipo, string $medida, $valor, string $p
            class="campo-input <?= $clase; ?>" value="<?= $valor; ?>" placeholder="<?= $placeholder; ?>">
     <?php if ($medida !== 'u'): ?>
       <button type="button" class="campo-btn campo-btn-foto btn-balanza" data-id="<?= $idp; ?>" data-tipo="<?= $tipo; ?>"
-              title="Tomar foto de la balanza (lee el peso y lo suma)" aria-label="Tomar foto de la balanza">
+              title="Tomar foto de la balanza (lee el peso en gramos y lo suma)" aria-label="Tomar foto de la balanza">
         <i class="material-symbols-rounded">photo_camera</i>
       </button>
     <?php endif; ?>
@@ -169,7 +169,7 @@ $campoPeso = function (int $idp, string $tipo, string $medida, $valor, string $p
         <p class="text-xs text-secondary mb-0 d-none d-md-block">
           <b>Producción</b>: lo que acaba de producir; se suma al acumulado.
           <b>Existencia</b>: conteo o peso actual.
-          Con la balanza, cada foto suma su peso al campo: tome una por recipiente.
+          Con la balanza, cada foto suma su peso (en gramos) al campo: tome una por recipiente.
         </p>
         <?php if (!$esEncargado): ?>
           <p class="text-xxs text-warning font-weight-bold mb-0 mt-1 d-flex align-items-center gap-1">
@@ -290,9 +290,9 @@ $campoPeso = function (int $idp, string $tipo, string $medida, $valor, string $p
   </form>
 </div>
 
-<!-- ===== Reemplaza COMPLETO el bloque <div class="modal ..." id="modalCamara"> de edit.php ===== -->
-<!-- IDs usados por edit.js: camSubtitulo, camVideo, camPreview, camCanvas, camArchivo, camError, camLectura,
-     camPeso, camUnidad, camTaper, camNeto, camSubir, camRepetir, camOtra, camUsar. NO existe camCapturar. -->
+<!-- ===== MODAL DE CÁMARA (todo en GRAMOS: sin selector de unidad) =====
+     IDs usados por edit.js: camSubtitulo, camVideo, camPreview, camCanvas, camArchivo, camError, camLectura,
+     camPeso, camTaper, camNeto, camSubir, camRepetir, camOtra, camUsar. NO existe camCapturar ni camUnidad. -->
 <div class="modal fade" id="modalCamara" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content">
@@ -315,26 +315,18 @@ $campoPeso = function (int $idp, string $tipo, string $medida, $valor, string $p
         <div id="camLectura" class="text-sm font-weight-bold mt-2 d-none"></div>
         <div id="camError" class="alert alert-danger text-white text-sm py-2 mt-2 d-none" role="alert"></div>
 
-        <!-- Siempre visibles: sirven aunque la lectura automática falle -->
+        <!-- Siempre visibles: sirven aunque la lectura automática falle. Todo en gramos. -->
         <div class="row g-2 mt-1">
-          <div class="col-7">
+          <div class="col-6">
             <div class="input-group input-group-outline is-filled">
-              <label class="form-label">Peso de la balanza</label>
-              <input type="text" id="camPeso" class="form-control" inputmode="decimal" autocomplete="off">
+              <label class="form-label">Peso de la balanza (g)</label>
+              <input type="text" id="camPeso" class="form-control" inputmode="numeric" autocomplete="off">
             </div>
           </div>
-          <div class="col-5">
-            <select id="camUnidad" class="form-select ps-2" aria-label="Unidad de la balanza">
-              <option value="g">g</option>
-              <option value="kg">kg</option>
-              <option value="lb">lb</option>
-              <option value="oz">oz</option>
-            </select>
-          </div>
-          <div class="col-12">
+          <div class="col-6">
             <div class="input-group input-group-outline is-filled">
-              <label class="form-label">Descontar taper (misma unidad)</label>
-              <input type="text" id="camTaper" class="form-control" inputmode="decimal" value="0" autocomplete="off">
+              <label class="form-label">Descontar taper (g)</label>
+              <input type="text" id="camTaper" class="form-control" inputmode="numeric" value="0" autocomplete="off">
             </div>
           </div>
         </div>
@@ -358,6 +350,7 @@ $campoPeso = function (int $idp, string $tipo, string $medida, $valor, string $p
     </div>
   </div>
 </div>
+
 <!-- MODAL: FOTOS SUMADAS (se abre al tocar las miniaturas; aquí se ven todas y se puede quitar alguna) -->
 <style>
   #modalFotos .foto-item { position: relative; width: 104px; text-align: center; }
@@ -389,7 +382,7 @@ $campoPeso = function (int $idp, string $tipo, string $medida, $valor, string $p
   </div>
 </div>
 
-<script src="<?= URL ?>/public/assets/js/produccion/lector_balanza.js"></script>
+<script src="<?= URL ?>/public/assets/js/produccion/lector_balanza.js?v=2"></script>
 <script>
   window.PRODUCCION_EDIT = {
     demo: true,                       // true = no envía nada al servidor; con backend ponerlo en false
@@ -399,4 +392,4 @@ $campoPeso = function (int $idp, string $tipo, string $medida, $valor, string $p
     items: <?= json_encode($estadoInicial, JSON_UNESCAPED_UNICODE) ?>
   };
 </script>
-<script src="<?= URL ?>/public/assets/js/produccion/edit.js"></script>
+<script src="<?= URL ?>/public/assets/js/produccion/edit.js?v=2"></script>

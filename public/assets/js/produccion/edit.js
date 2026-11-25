@@ -7,6 +7,9 @@
    buscar o cambiar de página. Por eso los datos viven en memoria (el "modelo") y las filas solo
    los muestran: nada se guarda en el DOM de la tabla y, al enviar, los campos se arman desde el modelo.
 
+   BALANZA: todo se maneja en GRAMOS (peso, taper y neto). Sin selector de unidad.
+   Si el producto se mide en kg (ej. Harina), el neto en gramos se convierte solo a kg al sumarlo.
+
    Configuración (la define edit.php):
      window.PRODUCCION_EDIT = { demo, base, idProduccion, fotoObligatoria, items: [...] }
 
@@ -16,7 +19,7 @@
      3. Vista de cada fila
      4. Cálculo, progreso y entrada
      5. Fotos de balanza (lista y suma)
-     6. Cámara: captura AUTOMÁTICA y lectura de la balanza
+     6. Cámara: captura AUTOMÁTICA y lectura de la balanza (en gramos)
      7. Modal de fotos sumadas
      8. Eventos del formulario
      9. Guardado y envío
@@ -37,7 +40,7 @@
 
   // Un registro por producto. Los campos numéricos se guardan como texto, tal cual los escribe la persona.
   // fotos[tipo] = [{ archivo, url, texto (etiqueta "303 g"), valor (en la unidad del producto),
-  //                  neto, unidad, taper }]
+  //                  neto (g), unidad ('g'), taper (g) }]
   const modelo = {};
   const lista = CFG.items.map((it, idx) => {
     const m = {
@@ -45,7 +48,6 @@
       entrada: texto(it.entrada), entradaOriginal: texto(it.entrada), entradaAbierta: false,
       agregar: '',
       existencia: texto(it.existencia), existenciaOriginal: texto(it.existencia),
-      unidadBal: '',     // última unidad de balanza elegida para este producto
       fotos: { produccion: [], existencia: [] }
     };
     modelo[m.id] = m;
@@ -67,12 +69,11 @@
     return sig && sig.classList.contains('child') ? [tr, sig] : [tr];
   }
 
-  // Unidades que puede mostrar una balanza (factor = cuántos gramos vale 1 unidad).
-  // La persona elige la de SU balanza; el sistema convierte a la unidad del producto.
+  // La balanza siempre se lee en GRAMOS; aquí solo se convierte a la unidad del producto (g o kg).
   const UNIDADES = { g: 1, kg: 1000, lb: 453.59237, oz: 28.349523 };
   const redondear = (v, medida) => { const k = medida === 'kg' ? 1000 : 100; return Math.round(v * k) / k; };
 
-  /** Convierte un peso (en la unidad de la balanza) a la unidad del producto. */
+  /** Convierte un peso (en la unidad indicada) a la unidad del producto. */
   function aUnidadProducto(valor, unidadBal, medida) {
     const gramos = valor * (UNIDADES[unidadBal] || 1);
     if (medida === 'g')  return Math.round(gramos);
@@ -238,11 +239,11 @@
     refrescar(m);
   }
 
-  /* ---------- 6. Cámara: captura AUTOMÁTICA y lectura de la balanza ----------
+  /* ---------- 6. Cámara: captura AUTOMÁTICA y lectura de la balanza (GRAMOS) ----------
      Al abrir, la cámara queda en vivo y el sistema busca el visor de la balanza cuadro a cuadro.
      Cuando lee el MISMO número varias veces seguidas (peso estable y mayor que 0) toma la foto solo.
      No hay botón "Capturar". Alternativas: "Galería / archivo", o escribir el peso a mano (eso congela
-     el cuadro actual como foto de respaldo). Los campos de peso, unidad y taper están SIEMPRE visibles. */
+     el cuadro actual como foto de respaldo). Los campos de peso y taper (en gramos) están SIEMPRE visibles. */
   const el = {
     modal:    document.getElementById('modalCamara'),
     sub:      document.getElementById('camSubtitulo'),
@@ -253,7 +254,6 @@
     error:    document.getElementById('camError'),
     lectura:  document.getElementById('camLectura'),
     peso:     document.getElementById('camPeso'),
-    unidad:   document.getElementById('camUnidad'),
     taper:    document.getElementById('camTaper'),
     neto:     document.getElementById('camNeto'),
     subir:    document.getElementById('camSubir'),
@@ -263,9 +263,9 @@
   };
   // Si el modal de edit.php no es el nuevo, faltarán IDs: se avisa en vez de romper todo el script
   const faltantes = Object.keys(el).filter((k) => !el[k]).map((k) => k);
-  if (faltantes.length) console.error('[produccion/edit.js] Faltan elementos en #modalCamara (reemplace el bloque por modal_camara.php):', faltantes);
-  const ESTABLE_N = 3;          // lecturas iguales seguidas para tomar la foto
-  const TICK_MS   = 450;        // cada cuánto se analiza un cuadro de la cámara
+  if (faltantes.length) console.error('[produccion/edit.js] Faltan elementos en #modalCamara (use el edit.php actualizado):', faltantes);
+  const ESTABLE_N = 2;          // lecturas iguales seguidas para tomar la foto
+  const TICK_MS   = 250;        // cada cuánto se analiza un cuadro de la cámara
 
   let camCtx = null;      // { m, tipo }
   let stream = null;      // cámara en vivo
@@ -299,26 +299,23 @@
       (n ? ' · ' + n + (n === 1 ? ' foto sumada' : ' fotos sumadas') : '');
   }
 
-  /** Peso neto (peso − taper) en la unidad de la balanza; null si los campos no son válidos. */
+  /** Todo en GRAMOS: peso, taper y neto son números enteros. */
   function calcularNeto() {
-    const peso = num(el.peso.value), taper = num(el.taper.value);
-    return { peso, taper, neto: Math.round((peso - taper) * 1e6) / 1e6 };
+    const peso = Math.round(num(el.peso.value)), taper = Math.round(num(el.taper.value));
+    return { peso, taper, neto: peso - taper };
   }
 
   /** Actualiza el resumen "Neto" y habilita "Sumar" solo si hay foto y un peso neto válido. */
   function actualizarSumar() {
     const { peso, taper, neto } = calcularNeto();
-    const u = el.unidad.value;
     let ok = false, txt = '';
     if (el.peso.value.trim() === '' || peso <= 0) {
-      txt = 'Escriba el peso que muestra la balanza (o enfoque el visor).';
+      txt = 'Escriba el peso en gramos que muestra la balanza (o enfoque el visor).';
     } else if (neto <= 0) {
-      txt = 'El taper (' + taper + ' ' + u + ') debe ser menor que el peso.';
+      txt = 'El taper (' + taper + ' g) debe ser menor que el peso.';
     } else {
-      const enProducto = aUnidadProducto(neto, u, camCtx ? camCtx.m.medida : 'g');
-      txt = 'Neto: ' + neto.toLocaleString('es-BO', { maximumFractionDigits: 3 }) + ' ' + u +
-        (taper > 0 ? ' (' + peso + ' − ' + taper + ')' : '') +
-        (camCtx && u !== camCtx.m.medida ? ' → se suma ' + enProducto.toLocaleString('es-BO', { maximumFractionDigits: 3 }) + ' ' + camCtx.m.medida : '');
+      txt = 'Neto: ' + neto.toLocaleString('es-BO') + ' g' + (taper > 0 ? ' (' + peso + ' − ' + taper + ')' : '') +
+        (camCtx && camCtx.m.medida === 'kg' ? ' → se suma ' + aUnidadProducto(neto, 'g', 'kg').toLocaleString('es-BO', { maximumFractionDigits: 3 }) + ' kg' : '');
       ok = true;
     }
     el.neto.textContent = txt;
@@ -363,9 +360,9 @@
   }
 
   function aplicarLectura(r, dudosa) {
-    el.peso.value = r.texto;
-    if (dudosa) mensaje('Lectura poco clara (' + r.confianza + '%): ' + r.texto + '. Verifique el número en la foto y corríjalo si hace falta.', 'aviso');
-    else mensaje('Peso leído: ' + r.texto + (r.puntoVisto ? '' : ' (sin punto decimal)') + ' · confianza ' + r.confianza + '%. Confirme la unidad.', 'ok');
+    el.peso.value = r.texto;     // r.texto ya viene en gramos
+    if (dudosa) mensaje('Lectura poco clara (' + r.confianza + '%): ' + r.texto + ' g. Verifique el número en la foto y corríjalo si hace falta.', 'aviso');
+    else mensaje('Peso leído: ' + r.texto + ' g · confianza ' + r.confianza + '%.', 'ok');
   }
 
   /** Lee el peso de una foto ya tomada. Si falla, los campos siguen habilitados para escribirlo a mano. */
@@ -400,6 +397,7 @@
 
   function iniciarAuto() {
     detenerAuto();
+    if (window.LectorBalanza) LectorBalanza.reiniciar();   // olvida el visor anterior
     estable = { texto: null, n: 0 };
     autoTimer = setInterval(tickAuto, TICK_MS);
   }
@@ -420,7 +418,7 @@
           detenerCamara();
           modoPrevia(blob, r);
         } else {
-          mensaje('Detectado ' + r.texto + '... mantenga quieta la cámara (' + estable.n + '/' + ESTABLE_N + ')', 'info');
+          mensaje('Detectado ' + r.texto + ' g... mantenga quieta la cámara (' + estable.n + '/' + ESTABLE_N + ')', 'info');
         }
       } else {
         estable = { texto: null, n: 0 };
@@ -454,13 +452,11 @@
   }
 
   function abrirCamara(m, tipo) {
-    if (faltantes.length) { alert('El modal de la cámara en edit.php está desactualizado. Falta: ' + faltantes.join(', ') + '. Reemplace el bloque #modalCamara por modal_camara.php.'); return; }
+    if (faltantes.length) { alert('El modal de la cámara en edit.php está desactualizado. Falta: ' + faltantes.join(', ') + '. Use el edit.php actualizado.'); return; }
     if (!window.bootstrap) { alert('Bootstrap no está cargado.'); return; }
     if (!window.LectorBalanza) { alert('No se cargó lector_balanza.js (revise la ruta en edit.php).'); return; }
     camCtx = { m, tipo };
     subtitulo();
-    // La unidad por defecto es la última usada con este producto o, si no hay, la del producto
-    el.unidad.value = m.unidadBal || (UNIDADES[m.medida] ? m.medida : 'g');
     el.taper.value = '0';
     bootstrap.Modal.getOrCreateInstance(el.modal).show();
     iniciarVideo();
@@ -474,10 +470,10 @@
     fd.append('id_produccion', CFG.idProduccion);
     fd.append('id_producto', m.id);
     fd.append('tipo', tipo);
-    fd.append('peso', dat.peso);
-    fd.append('taper', dat.taper);
-    fd.append('unidad', dat.unidad);
-    fd.append('neto', dat.neto);
+    fd.append('peso', dat.peso);        // gramos
+    fd.append('taper', dat.taper);      // gramos
+    fd.append('unidad', dat.unidad);    // siempre 'g'
+    fd.append('neto', dat.neto);        // gramos
     const r = await fetch(CFG.base + '/produccion/foto', { method: 'POST', body: fd, credentials: 'same-origin' });
     const j = await r.json();
     if (!j.ok) throw new Error(j.msg || 'No se pudo subir la foto.');
@@ -489,16 +485,15 @@
     if (!blobFoto || !camCtx || !actualizarSumar()) return;
     const { m, tipo } = camCtx;
     const { peso, taper, neto } = calcularNeto();
-    const unidad = el.unidad.value;
+    const unidad = 'g';
     el.otra.disabled = true; el.usar.disabled = true;
     try {
       const guardada = await guardarFoto(blobFoto, m, tipo, { peso, taper, neto, unidad });
-      m.unidadBal = unidad;
       sumarFoto(m, tipo, {
         archivo: guardada.archivo,
         url: guardada.url,
-        texto: neto.toLocaleString('es-BO', { maximumFractionDigits: 3 }) + ' ' + unidad,
-        valor: aUnidadProducto(neto, unidad, m.medida),
+        texto: neto.toLocaleString('es-BO') + ' g',
+        valor: aUnidadProducto(neto, 'g', m.medida),   // Harina (kg) se convierte sola; los demás quedan en g
         neto, unidad, taper
       });
       if (seguir) { subtitulo(); iniciarVideo(); }     // el taper se conserva: suele ser el mismo recipiente
@@ -510,9 +505,9 @@
   }
 
   if (!faltantes.length) {
-  /* Campos de peso / unidad / taper (siempre visibles) */
+  /* Campos de peso / taper en gramos (siempre visibles): solo dígitos */
   el.peso.addEventListener('input', async () => {
-    el.peso.value = el.peso.value.replace(/[^0-9.,]/g, '');
+    el.peso.value = el.peso.value.replace(/[^0-9]/g, '');
     // Escribir el peso estando en vivo congela el cuadro actual como foto de respaldo
     if (modo === 'vivo' && stream && el.video.videoWidth && el.peso.value !== '') {
       const valor = el.peso.value;
@@ -525,8 +520,7 @@
     }
     actualizarSumar();
   });
-  el.taper.addEventListener('input', () => { el.taper.value = el.taper.value.replace(/[^0-9.,]/g, ''); actualizarSumar(); });
-  el.unidad.addEventListener('change', actualizarSumar);
+  el.taper.addEventListener('input', () => { el.taper.value = el.taper.value.replace(/[^0-9]/g, ''); actualizarSumar(); });
 
   el.repetir.addEventListener('click', () => { detenerCamara(); iniciarVideo(); });
 
@@ -583,7 +577,7 @@
 
       const peso = document.createElement('span');
       peso.className = 'foto-item-peso';
-      peso.textContent = f.texto + (f.taper > 0 ? ' (taper ' + f.taper + ')' : '');
+      peso.textContent = f.texto + (f.taper > 0 ? ' (taper ' + f.taper + ' g)' : '');
 
       item.append(ver, quitar, peso);
       fo.grid.appendChild(item);
@@ -659,9 +653,9 @@
       agregar(p + '[existencia]', m.existencia === '' ? '' : num(m.existencia));
       ['produccion', 'existencia'].forEach((tipo) => m.fotos[tipo].forEach((f) => {
         agregar(p + '[fotos_' + tipo + '][]', f.archivo);     // archivo de cada foto
-        agregar(p + '[pesos_' + tipo + '][]', f.neto);        // peso neto en la unidad de la balanza
-        agregar(p + '[unidades_' + tipo + '][]', f.unidad);   // unidad de la balanza (g, kg, lb, oz)
-        agregar(p + '[tapers_' + tipo + '][]', f.taper);      // taper descontado
+        agregar(p + '[pesos_' + tipo + '][]', f.neto);        // peso neto en GRAMOS
+        agregar(p + '[unidades_' + tipo + '][]', f.unidad);   // siempre 'g'
+        agregar(p + '[tapers_' + tipo + '][]', f.taper);      // taper descontado en GRAMOS
       }));
     });
   }
