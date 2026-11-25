@@ -12,11 +12,11 @@
 
    Índice
      1. Configuración y modelo
-     2. Utilidades
+     2. Utilidades y unidades
      3. Vista de cada fila
      4. Cálculo, progreso y entrada
      5. Fotos de balanza (lista y suma)
-     6. Cámara y lectura de la balanza
+     6. Cámara: captura AUTOMÁTICA y lectura de la balanza
      7. Modal de fotos sumadas
      8. Eventos del formulario
      9. Guardado y envío
@@ -36,7 +36,8 @@
   const texto = (v) => (v === null || v === undefined ? '' : String(v));
 
   // Un registro por producto. Los campos numéricos se guardan como texto, tal cual los escribe la persona.
-  // fotos[tipo] = [{ archivo, url, texto (kg leídos), valor (en la unidad del producto) }]
+  // fotos[tipo] = [{ archivo, url, texto (etiqueta "303 g"), valor (en la unidad del producto),
+  //                  neto, unidad, taper }]
   const modelo = {};
   const lista = CFG.items.map((it, idx) => {
     const m = {
@@ -44,13 +45,14 @@
       entrada: texto(it.entrada), entradaOriginal: texto(it.entrada), entradaAbierta: false,
       agregar: '',
       existencia: texto(it.existencia), existenciaOriginal: texto(it.existencia),
+      unidadBal: '',     // última unidad de balanza elegida para este producto
       fotos: { produccion: [], existencia: [] }
     };
     modelo[m.id] = m;
     return m;
   });
 
-  /* ---------- 2. Utilidades ---------- */
+  /* ---------- 2. Utilidades y unidades ---------- */
   const num   = (v) => parseFloat(texto(v).replace(',', '.')) || 0;
   const fmt   = (n) => Number(n).toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const campoDe    = (tipo) => (tipo === 'produccion' ? 'agregar' : 'existencia');
@@ -65,9 +67,18 @@
     return sig && sig.classList.contains('child') ? [tr, sig] : [tr];
   }
 
-  // La balanza lee en kg: se convierte a la unidad del producto (g sin decimales, kg con 3).
-  const kgAUnidad = (kg, medida) => (medida === 'g' ? Math.round(kg * 1000) : Math.round(kg * 1000) / 1000);
+  // Unidades que puede mostrar una balanza (factor = cuántos gramos vale 1 unidad).
+  // La persona elige la de SU balanza; el sistema convierte a la unidad del producto.
+  const UNIDADES = { g: 1, kg: 1000, lb: 453.59237, oz: 28.349523 };
   const redondear = (v, medida) => { const k = medida === 'kg' ? 1000 : 100; return Math.round(v * k) / k; };
+
+  /** Convierte un peso (en la unidad de la balanza) a la unidad del producto. */
+  function aUnidadProducto(valor, unidadBal, medida) {
+    const gramos = valor * (UNIDADES[unidadBal] || 1);
+    if (medida === 'g')  return Math.round(gramos);
+    if (UNIDADES[medida]) return Math.round(gramos / UNIDADES[medida] * 1000) / 1000;
+    return valor;                                   // unidad desconocida: se toma el número tal cual
+  }
 
   function aviso(txt, tipo) {
     const a = document.getElementById('aviso-demo');
@@ -110,7 +121,7 @@
     btn.type = 'button';
     btn.className = 'foto-strip';
     btn.dataset.verFotos = '1'; btn.dataset.id = m.id; btn.dataset.tipo = tipo;
-    btn.title = fotos.length + (fotos.length === 1 ? ' foto: ' : ' fotos: ') + fotos.map((f) => f.texto + ' kg').join(' + ') + ' (tocar para ver)';
+    btn.title = fotos.length + (fotos.length === 1 ? ' foto: ' : ' fotos: ') + fotos.map((f) => f.texto).join(' + ') + ' (tocar para ver)';
 
     const grupo = document.createElement('span');
     grupo.className = 'foto-grupo';
@@ -128,7 +139,7 @@
 
     const peso = document.createElement('span');
     peso.className = 'foto-peso';
-    peso.textContent = ultima.texto + ' kg';
+    peso.textContent = ultima.texto;
 
     btn.append(grupo, peso);
     cont.appendChild(btn);
@@ -227,7 +238,11 @@
     refrescar(m);
   }
 
-  /* ---------- 6. Cámara y lectura de la balanza ---------- */
+  /* ---------- 6. Cámara: captura AUTOMÁTICA y lectura de la balanza ----------
+     Al abrir, la cámara queda en vivo y el sistema busca el visor de la balanza cuadro a cuadro.
+     Cuando lee el MISMO número varias veces seguidas (peso estable y mayor que 0) toma la foto solo.
+     No hay botón "Capturar". Alternativas: "Galería / archivo", o escribir el peso a mano (eso congela
+     el cuadro actual como foto de respaldo). Los campos de peso, unidad y taper están SIEMPRE visibles. */
   const el = {
     modal:    document.getElementById('modalCamara'),
     sub:      document.getElementById('camSubtitulo'),
@@ -237,27 +252,45 @@
     archivo:  document.getElementById('camArchivo'),
     error:    document.getElementById('camError'),
     lectura:  document.getElementById('camLectura'),
+    peso:     document.getElementById('camPeso'),
+    unidad:   document.getElementById('camUnidad'),
+    taper:    document.getElementById('camTaper'),
+    neto:     document.getElementById('camNeto'),
     subir:    document.getElementById('camSubir'),
     repetir:  document.getElementById('camRepetir'),
-    capturar: document.getElementById('camCapturar'),
     otra:     document.getElementById('camOtra'),
     usar:     document.getElementById('camUsar')
   };
-  let camCtx = null;      // { m, tipo, lectura }
+  // Si el modal de edit.php no es el nuevo, faltarán IDs: se avisa en vez de romper todo el script
+  const faltantes = Object.keys(el).filter((k) => !el[k]).map((k) => k);
+  if (faltantes.length) console.error('[produccion/edit.js] Faltan elementos en #modalCamara (reemplace el bloque por modal_camara.php):', faltantes);
+  const ESTABLE_N = 3;          // lecturas iguales seguidas para tomar la foto
+  const TICK_MS   = 450;        // cada cuánto se analiza un cuadro de la cámara
+
+  let camCtx = null;      // { m, tipo }
   let stream = null;      // cámara en vivo
   let blobFoto = null;    // foto tomada
-  let lecturaId = 0;      // identifica la lectura en curso (para descartar las viejas)
-
-  const botonesSumar = [el.otra, el.usar];
-  const habilitarSumar = (on) => botonesSumar.forEach((b) => { b.disabled = !on; });
+  let modo = 'vivo';      // 'vivo' | 'previa'
+  let lecturaId = 0;      // identifica el modo/lectura en curso (descarta resultados viejos)
+  let leyendo = false;    // leyendo una foto ya tomada
+  let autoTimer = null, autoBusy = false, estable = { texto: null, n: 0 };
 
   function detenerCamara() {
+    detenerAuto();
     if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; }
   }
+  function detenerAuto() { if (autoTimer) { clearInterval(autoTimer); autoTimer = null; } autoBusy = false; }
 
   function mostrarError(txt) {
     el.error.textContent = txt || '';
     el.error.classList.toggle('d-none', !txt);
+  }
+  /** Mensaje de estado bajo el video: tipo = 'info' | 'ok' | 'aviso' */
+  function mensaje(txt, tipo) {
+    const cls = { info: 'text-secondary', ok: 'text-success', aviso: 'text-warning' }[tipo || 'info'];
+    el.lectura.className = 'text-sm font-weight-bold mt-2 ' + cls;
+    el.lectura.textContent = txt || '';
+    el.lectura.classList.toggle('d-none', !txt);
   }
 
   function subtitulo() {
@@ -266,56 +299,136 @@
       (n ? ' · ' + n + (n === 1 ? ' foto sumada' : ' fotos sumadas') : '');
   }
 
+  /** Peso neto (peso − taper) en la unidad de la balanza; null si los campos no son válidos. */
+  function calcularNeto() {
+    const peso = num(el.peso.value), taper = num(el.taper.value);
+    return { peso, taper, neto: Math.round((peso - taper) * 1e6) / 1e6 };
+  }
+
+  /** Actualiza el resumen "Neto" y habilita "Sumar" solo si hay foto y un peso neto válido. */
+  function actualizarSumar() {
+    const { peso, taper, neto } = calcularNeto();
+    const u = el.unidad.value;
+    let ok = false, txt = '';
+    if (el.peso.value.trim() === '' || peso <= 0) {
+      txt = 'Escriba el peso que muestra la balanza (o enfoque el visor).';
+    } else if (neto <= 0) {
+      txt = 'El taper (' + taper + ' ' + u + ') debe ser menor que el peso.';
+    } else {
+      const enProducto = aUnidadProducto(neto, u, camCtx ? camCtx.m.medida : 'g');
+      txt = 'Neto: ' + neto.toLocaleString('es-BO', { maximumFractionDigits: 3 }) + ' ' + u +
+        (taper > 0 ? ' (' + peso + ' − ' + taper + ')' : '') +
+        (camCtx && u !== camCtx.m.medida ? ' → se suma ' + enProducto.toLocaleString('es-BO', { maximumFractionDigits: 3 }) + ' ' + camCtx.m.medida : '');
+      ok = true;
+    }
+    el.neto.textContent = txt;
+    el.neto.classList.toggle('text-danger', !ok && neto <= 0 && peso > 0);
+    const puedo = ok && !!blobFoto && !leyendo;
+    el.otra.disabled = !puedo; el.usar.disabled = !puedo;
+    return ok;
+  }
+
   /** Sin cámara en vivo (p. ej. HTTP en el teléfono): se destaca "Galería / archivo". */
   function soloArchivo(on) {
-    el.capturar.disabled = on;
     el.subir.classList.toggle('btn-outline-secondary', !on);
     el.subir.classList.toggle('bg-gradient-primary', on);
     el.subir.classList.toggle('text-white', on);
   }
 
   function modoVivo() {
-    blobFoto = null;
+    blobFoto = null; modo = 'vivo'; leyendo = false;
     lecturaId++;
-    if (camCtx) camCtx.lectura = null;
-    el.lectura.classList.add('d-none');
+    estable = { texto: null, n: 0 };
     el.video.classList.remove('d-none');
     el.preview.classList.add('d-none');
-    el.capturar.classList.remove('d-none');
     el.repetir.classList.add('d-none');
-    botonesSumar.forEach((b) => b.classList.add('d-none'));
+    el.otra.classList.add('d-none'); el.usar.classList.add('d-none');
+    el.peso.value = '';
+    actualizarSumar();
   }
 
-  function modoPrevia(blob) {
-    blobFoto = blob;
+  function modoPrevia(blob, lectura, manual) {
+    blobFoto = blob; modo = 'previa';
+    lecturaId++;
+    detenerAuto();
     el.preview.src = window.URL.createObjectURL(blob);
     el.video.classList.add('d-none');
     el.preview.classList.remove('d-none');
-    el.capturar.classList.add('d-none');
     el.repetir.classList.remove('d-none');
-    botonesSumar.forEach((b) => b.classList.remove('d-none'));
-    leerPesoDeFoto(blob);
+    el.otra.classList.remove('d-none'); el.usar.classList.remove('d-none');
+    if (lectura) aplicarLectura(lectura);
+    else if (manual) mensaje('Foto tomada. Verifique que el peso escrito coincida con la balanza.', 'info');
+    else leerPesoDeFoto(blob);
+    actualizarSumar();
   }
 
-  /** Lee el peso del visor de la balanza; solo se puede sumar la foto si la lectura fue válida. */
+  function aplicarLectura(r, dudosa) {
+    el.peso.value = r.texto;
+    if (dudosa) mensaje('Lectura poco clara (' + r.confianza + '%): ' + r.texto + '. Verifique el número en la foto y corríjalo si hace falta.', 'aviso');
+    else mensaje('Peso leído: ' + r.texto + (r.puntoVisto ? '' : ' (sin punto decimal)') + ' · confianza ' + r.confianza + '%. Confirme la unidad.', 'ok');
+  }
+
+  /** Lee el peso de una foto ya tomada. Si falla, los campos siguen habilitados para escribirlo a mano. */
   function leerPesoDeFoto(blob) {
     const id = ++lecturaId;
-    el.lectura.className = 'text-sm font-weight-bold mt-2 text-secondary';
-    el.lectura.textContent = 'Leyendo balanza...';
-    habilitarSumar(false);
+    leyendo = true;
+    mensaje('Leyendo balanza...', 'info');
+    actualizarSumar();
 
-    const fallo = (msg) => {
-      el.lectura.classList.add('d-none');
-      mostrarError(msg + ' Repita la foto o escriba el peso a mano en el campo.');
-    };
+    const fin = () => { if (id === lecturaId) { leyendo = false; actualizarSumar(); } };
     LectorBalanza.leerPeso(blob).then((r) => {
-      if (id !== lecturaId || !camCtx) return;     // el usuario ya repitió la foto
-      if (!r.ok) { fallo(r.motivo || 'No se pudo leer el peso.'); return; }
-      camCtx.lectura = r;
-      el.lectura.className = 'text-sm font-weight-bold mt-2 text-success';
-      el.lectura.textContent = 'Peso leído: ' + r.texto + ' kg (confianza ' + r.confianza + '%)';
-      habilitarSumar(true);
-    }).catch(() => { if (id === lecturaId) fallo('No se pudo leer el peso.'); });
+      if (id !== lecturaId || !camCtx) return;
+      if (r.ok) aplicarLectura(r);
+      else if (r.texto) aplicarLectura(r, true);
+      else mensaje('No pude leer el peso automáticamente. Escriba en el campo el número que se ve en la foto.', 'aviso');
+      fin();
+    }).catch(() => {
+      if (id !== lecturaId) return;
+      mensaje('No pude leer el peso automáticamente. Escriba en el campo el número que se ve en la foto.', 'aviso');
+      fin();
+    });
+  }
+
+  /* --- Captura automática --- */
+  function dibujar(fuente, w, h) {
+    const max = 1280, k = Math.min(1, max / Math.max(w, h));
+    el.canvas.width = Math.round(w * k);
+    el.canvas.height = Math.round(h * k);
+    el.canvas.getContext('2d').drawImage(fuente, 0, 0, el.canvas.width, el.canvas.height);
+  }
+  const canvasABlob = () => new Promise((res) => el.canvas.toBlob(res, 'image/jpeg', 0.8));
+
+  function iniciarAuto() {
+    detenerAuto();
+    estable = { texto: null, n: 0 };
+    autoTimer = setInterval(tickAuto, TICK_MS);
+  }
+
+  async function tickAuto() {
+    if (autoBusy || modo !== 'vivo' || !stream || !el.video.videoWidth) return;
+    autoBusy = true;
+    const id = lecturaId;
+    try {
+      const r = await LectorBalanza.leerPeso(el.video, { vivo: true });
+      if (id !== lecturaId || modo !== 'vivo' || !stream) return;     // cambió el modo mientras se leía
+      if (r.ok && r.confianza >= 60 && r.valor > 0) {
+        if (r.texto === estable.texto) estable.n++; else { estable = { texto: r.texto, n: 1 }; }
+        if (estable.n >= ESTABLE_N) {
+          dibujar(el.video, el.video.videoWidth, el.video.videoHeight);
+          const blob = await canvasABlob();
+          if (id !== lecturaId || modo !== 'vivo') return;
+          detenerCamara();
+          modoPrevia(blob, r);
+        } else {
+          mensaje('Detectado ' + r.texto + '... mantenga quieta la cámara (' + estable.n + '/' + ESTABLE_N + ')', 'info');
+        }
+      } else {
+        estable = { texto: null, n: 0 };
+        mensaje(r.sinVisor ? 'Buscando el visor de la balanza... enfóquelo de frente y con buena luz.'
+          : 'Visor detectado, esperando un peso estable...', 'info');
+      }
+    } catch (e) { /* un cuadro fallido no detiene la búsqueda */ }
+    finally { autoBusy = false; }
   }
 
   async function iniciarVideo() {
@@ -324,76 +437,97 @@
     soloArchivo(false);
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       soloArchivo(true);
+      mensaje('', 'info');
       mostrarError('La cámara en vivo no está disponible (requiere HTTPS). Use "Galería / archivo" para tomar la foto o elegir una ya tomada.');
       return;
     }
     try {
       stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
       el.video.srcObject = stream;
+      mensaje('Enfoque el visor de la balanza: la foto se toma sola al leer un peso estable.', 'info');
+      iniciarAuto();
     } catch (e) {
       soloArchivo(true);
+      mensaje('', 'info');
       mostrarError('No se pudo abrir la cámara. Revise el permiso o use "Galería / archivo".');
     }
   }
 
-  function dibujar(fuente, w, h) {
-    const max = 1280, k = Math.min(1, max / Math.max(w, h));
-    el.canvas.width = Math.round(w * k);
-    el.canvas.height = Math.round(h * k);
-    el.canvas.getContext('2d').drawImage(fuente, 0, 0, el.canvas.width, el.canvas.height);
-  }
-  const canvasABlob = () => new Promise((res) => el.canvas.toBlob(res, 'image/jpeg', 0.75));
-
   function abrirCamara(m, tipo) {
-    camCtx = { m, tipo, lectura: null };
+    if (faltantes.length) { alert('El modal de la cámara en edit.php está desactualizado. Falta: ' + faltantes.join(', ') + '. Reemplace el bloque #modalCamara por modal_camara.php.'); return; }
+    if (!window.bootstrap) { alert('Bootstrap no está cargado.'); return; }
+    if (!window.LectorBalanza) { alert('No se cargó lector_balanza.js (revise la ruta en edit.php).'); return; }
+    camCtx = { m, tipo };
     subtitulo();
+    // La unidad por defecto es la última usada con este producto o, si no hay, la del producto
+    el.unidad.value = m.unidadBal || (UNIDADES[m.medida] ? m.medida : 'g');
+    el.taper.value = '0';
     bootstrap.Modal.getOrCreateInstance(el.modal).show();
     iniciarVideo();
   }
 
   /** DEMO: la foto queda solo en el navegador. BACKEND: sube el blob a /produccion/foto y devuelve { archivo, url }. */
-  async function guardarFoto(blob, m, tipo, lectura) {
+  async function guardarFoto(blob, m, tipo, dat) {
     if (CFG.demo) return { archivo: 'foto-demo-' + Date.now() + '.jpg', url: window.URL.createObjectURL(blob) };
     const fd = new FormData();
     fd.append('foto', blob, 'foto.jpg');
     fd.append('id_produccion', CFG.idProduccion);
     fd.append('id_producto', m.id);
     fd.append('tipo', tipo);
-    fd.append('peso_kg', lectura.texto);
+    fd.append('peso', dat.peso);
+    fd.append('taper', dat.taper);
+    fd.append('unidad', dat.unidad);
+    fd.append('neto', dat.neto);
     const r = await fetch(CFG.base + '/produccion/foto', { method: 'POST', body: fd, credentials: 'same-origin' });
     const j = await r.json();
     if (!j.ok) throw new Error(j.msg || 'No se pudo subir la foto.');
     return j;
   }
 
-  /** Suma el peso leído al campo. Con seguir = true deja el modal abierto para otra foto (otro recipiente). */
+  /** Suma el peso neto al campo. Con seguir = true deja el modal abierto para otra foto (otro recipiente). */
   async function confirmarFoto(seguir) {
-    if (!blobFoto || !camCtx || !camCtx.lectura) return;
-    const { m, tipo, lectura } = camCtx;
-    habilitarSumar(false);
+    if (!blobFoto || !camCtx || !actualizarSumar()) return;
+    const { m, tipo } = camCtx;
+    const { peso, taper, neto } = calcularNeto();
+    const unidad = el.unidad.value;
+    el.otra.disabled = true; el.usar.disabled = true;
     try {
-      const guardada = await guardarFoto(blobFoto, m, tipo, lectura);
+      const guardada = await guardarFoto(blobFoto, m, tipo, { peso, taper, neto, unidad });
+      m.unidadBal = unidad;
       sumarFoto(m, tipo, {
         archivo: guardada.archivo,
         url: guardada.url,
-        texto: lectura.texto,
-        valor: kgAUnidad(lectura.valor, m.medida)
+        texto: neto.toLocaleString('es-BO', { maximumFractionDigits: 3 }) + ' ' + unidad,
+        valor: aUnidadProducto(neto, unidad, m.medida),
+        neto, unidad, taper
       });
-      if (seguir) { subtitulo(); iniciarVideo(); }
+      if (seguir) { subtitulo(); iniciarVideo(); }     // el taper se conserva: suele ser el mismo recipiente
       else bootstrap.Modal.getOrCreateInstance(el.modal).hide();
     } catch (e) {
       mostrarError(e.message || 'No se pudo guardar la foto.');
-      habilitarSumar(true);
+      actualizarSumar();
     }
   }
 
-  el.capturar.addEventListener('click', async () => {
-    if (!stream || !el.video.videoWidth) { mostrarError('La cámara aún no está lista.'); return; }
-    dibujar(el.video, el.video.videoWidth, el.video.videoHeight);
-    const blob = await canvasABlob();
-    detenerCamara();
-    modoPrevia(blob);
+  if (!faltantes.length) {
+  /* Campos de peso / unidad / taper (siempre visibles) */
+  el.peso.addEventListener('input', async () => {
+    el.peso.value = el.peso.value.replace(/[^0-9.,]/g, '');
+    // Escribir el peso estando en vivo congela el cuadro actual como foto de respaldo
+    if (modo === 'vivo' && stream && el.video.videoWidth && el.peso.value !== '') {
+      const valor = el.peso.value;
+      dibujar(el.video, el.video.videoWidth, el.video.videoHeight);
+      const blob = await canvasABlob();
+      if (modo !== 'vivo') return;
+      detenerCamara();
+      modoPrevia(blob, null, true);
+      el.peso.value = valor;
+    }
+    actualizarSumar();
   });
+  el.taper.addEventListener('input', () => { el.taper.value = el.taper.value.replace(/[^0-9.,]/g, ''); actualizarSumar(); });
+  el.unidad.addEventListener('change', actualizarSumar);
+
   el.repetir.addEventListener('click', () => { detenerCamara(); iniciarVideo(); });
 
   // Galería / archivos (sin "capture": en el celular deja elegir galería, archivos o cámara)
@@ -415,7 +549,8 @@
 
   el.usar.addEventListener('click', () => confirmarFoto(false));
   el.otra.addEventListener('click', () => confirmarFoto(true));
-  el.modal.addEventListener('hidden.bs.modal', () => { detenerCamara(); modoVivo(); mostrarError(''); camCtx = null; });
+  el.modal.addEventListener('hidden.bs.modal', () => { detenerCamara(); modoVivo(); mostrarError(''); mensaje('', 'info'); camCtx = null; });
+  }
 
   /* ---------- 7. Modal de fotos sumadas (ver todas y quitar alguna) ---------- */
   const fo = {
@@ -448,13 +583,13 @@
 
       const peso = document.createElement('span');
       peso.className = 'foto-item-peso';
-      peso.textContent = f.texto + ' kg';
+      peso.textContent = f.texto + (f.taper > 0 ? ' (taper ' + f.taper + ')' : '');
 
       item.append(ver, quitar, peso);
       fo.grid.appendChild(item);
     });
-    const kg = fotos.reduce((a, f) => a + (parseFloat(f.texto) || 0), 0);
-    fo.total.textContent = kg.toLocaleString('es-BO', { minimumFractionDigits: 3, maximumFractionDigits: 3 }) + ' kg';
+    const suma = fotos.reduce((a, f) => a + (f.valor || 0), 0);
+    fo.total.textContent = suma.toLocaleString('es-BO', { minimumFractionDigits: 0, maximumFractionDigits: 3 }) + ' ' + m.medida;
   }
 
   function abrirFotos(m, tipo) {
@@ -523,8 +658,10 @@
       agregar(p + '[agregar]', m.agregar === '' ? '' : num(m.agregar));
       agregar(p + '[existencia]', m.existencia === '' ? '' : num(m.existencia));
       ['produccion', 'existencia'].forEach((tipo) => m.fotos[tipo].forEach((f) => {
-        agregar(p + '[fotos_' + tipo + '][]', f.archivo);   // archivo de cada foto
-        agregar(p + '[pesos_' + tipo + '][]', f.texto);     // peso leído (kg) de cada foto
+        agregar(p + '[fotos_' + tipo + '][]', f.archivo);     // archivo de cada foto
+        agregar(p + '[pesos_' + tipo + '][]', f.neto);        // peso neto en la unidad de la balanza
+        agregar(p + '[unidades_' + tipo + '][]', f.unidad);   // unidad de la balanza (g, kg, lb, oz)
+        agregar(p + '[tapers_' + tipo + '][]', f.taper);      // taper descontado
       }));
     });
   }

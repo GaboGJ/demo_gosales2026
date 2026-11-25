@@ -1,27 +1,38 @@
 /* ==================================================================
-   lector_balanza.js — Lee el PESO de una balanza Trillium (LCD verde
-   de 7 segmentos) a partir de una foto. 100% en el navegador, sin
-   librerías ni servidor.
+   lector_balanza.js — Lee el PESO que muestra el visor de una balanza
+   a partir de una foto o de un cuadro de video. 100% en el navegador.
 
-   Uso:   const r = await LectorBalanza.leerPeso(blobOCanvas);
-          r = { ok, valor (kg), texto, confianza (0-100), motivo }
+   Uso:   const r = await LectorBalanza.leerPeso(blob | canvas | video, { vivo: false });
+          r = { ok, valor, texto, confianza (0-100), puntoVisto, motivo }
+
+   IMPORTANTE: devuelve el NÚMERO tal como lo muestra el visor. NO asume
+   la unidad (kg, g, lb, oz): la unidad la elige la persona en pantalla.
+   Si no se ve el punto decimal, el número se toma como entero (303 = 303).
+
+   Tipos de visor que detecta automáticamente:
+     - LCD verde con dígitos oscuros (Trillium y similares)
+     - LED rojo / ámbar con dígitos encendidos (balanzas de mostrador)
+   Otros visores: la lectura falla y la pantalla habilita el ingreso manual.
 
    Cómo funciona (en corto):
-   1. Busca el visor verde de la balanza en la foto (el de más a la izquierda = PESO).
-   2. Quita reflejos: divide cada píxel por la luz de su vecindad.
-   3. Endereza la inclinación de los dígitos (letra itálica del LCD).
+   1. Busca TODOS los posibles visores en la foto (no solo uno) y los prueba
+      de izquierda a derecha: el primero que se lee bien es el PESO.
+   2. Quita reflejos / normaliza la luz.
+   3. Endereza la inclinación (letra itálica del LCD y foto chueca).
    4. Separa los dígitos y mira qué segmentos están encendidos (a-g).
-   5. Arma el número; el punto decimal se detecta (si no, asume 3 decimales).
+   5. Arma el número; el punto decimal se detecta (si no, entero).
    ================================================================== */
 (function (root) {
   'use strict';
 
   const CFG = {
-    LADO_MAX: 1600,     // la foto se reduce a este lado máximo
-    ALTO_VISOR: 240,    // el visor se normaliza a este alto (px)
-    MAX_KG: 41,         // balanza de 40 kg: más que esto es lectura errónea
-    DEC_DEFECTO: 3,     // decimales si no se detecta el punto (e=1 g → 3 decimales en kg)
-    CONF_MIN: 55,       // bajo este % se considera lectura dudosa
+    LADO_MAX: 1600,       // foto estática: se reduce a este lado máximo
+    LADO_VIVO: 1000,      // cuadros de la cámara en vivo (más rápido)
+    ALTO_VISOR: 240,      // el visor se normaliza a este alto (px)
+    MAX_CELDAS: 8,        // más dígitos que esto = lectura errónea
+    CONF_MIN: 55,         // bajo este % se considera lectura dudosa
+    ANGULOS: [0, -3, 3, -6, 6, -9, 9, -13, 13, -18, 18, -24, 24],
+    ANGULOS_VIVO: [0, -6, 6, -12, 12],
   };
 
   /* Segmentos: a=arriba, b=arriba-der, c=abajo-der, d=abajo, e=abajo-izq, f=arriba-izq, g=medio */
@@ -34,6 +45,12 @@
     a: [0.22, 0.78, 0.00, 0.15], g: [0.12, 0.88, 0.44, 0.56], d: [0.22, 0.78, 0.85, 1.00],
     f: [0.00, 0.30, 0.10, 0.47], b: [0.70, 1.00, 0.10, 0.47],
     e: [0.00, 0.30, 0.53, 0.90], c: [0.70, 1.00, 0.53, 0.90],
+  };
+
+  /* Tipos de visor: cómo reconocer su color y cómo leer sus dígitos */
+  const MODOS = {
+    verde: { prueba: (r, g, b) => g > 110 && g - r > 20 && g - b > 20, dilatar: 1, canal: 1, luz: false },
+    led:   { prueba: (r, g, b) => r > 150 && r - g > 60 && r - b > 60, dilatar: 2, canal: 0, luz: true },
   };
 
   /* ---------------- utilidades de imagen ---------------- */
@@ -89,83 +106,105 @@
     return { lab, comps };
   }
 
-  /* ---------------- 1) Buscar el visor verde de PESO ---------------- */
-  function buscarVisorPeso(rgba, W, H) {
-    const B = 4, bw = Math.floor(W / B), bh = Math.floor(H / B);
-    const m = new Uint8Array(bw * bh);
-    for (let by = 0; by < bh; by++) for (let bx = 0; bx < bw; bx++) {
-      let c = 0;
-      for (let j = 0; j < B; j++) for (let i = 0; i < B; i++) {
-        const p = ((by * B + j) * W + (bx * B + i)) * 4, r = rgba[p], g = rgba[p + 1], b = rgba[p + 2];
-        if (g > 120 && g - r > 25 && g - b > 25) c++;
+  /* ---------------- 1) Buscar los posibles visores ---------------- */
+  /** Devuelve una lista de candidatos (el visor verde primero, de izquierda a derecha).
+      No se descarta ninguno por "ser más chico que otro": cada uno se prueba leyéndolo. */
+  function buscarVisores(rgba, W, H) {
+    const B = Math.max(2, Math.round(Math.max(W, H) / 400));
+    const bw = Math.floor(W / B), bh = Math.floor(H / B);
+    const minPix = Math.ceil(B * B * 0.4);
+    const out = [];
+
+    for (const nombre in MODOS) {
+      const M = MODOS[nombre];
+      const m = new Uint8Array(bw * bh);
+      for (let by = 0; by < bh; by++) for (let bx = 0; bx < bw; bx++) {
+        let c = 0;
+        for (let j = 0; j < B; j++) for (let i = 0; i < B; i++) {
+          const p = ((by * B + j) * W + (bx * B + i)) * 4;
+          if (M.prueba(rgba[p], rgba[p + 1], rgba[p + 2])) c++;
+        }
+        m[by * bw + bx] = c >= minPix ? 1 : 0;
       }
-      m[by * bw + bx] = c >= 8 ? 1 : 0;
-    }
-    const d = new Uint8Array(bw * bh);                       // dilatar 1 bloque: une huecos
-    for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) {
-      if (!m[y * bw + x]) continue;
-      for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) {
-        const xx = x + i, yy = y + j; if (xx >= 0 && xx < bw && yy >= 0 && yy < bh) d[yy * bw + xx] = 1;
+      const R = M.dilatar, d = new Uint8Array(bw * bh);        // dilatar: une huecos entre dígitos
+      for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) {
+        if (!m[y * bw + x]) continue;
+        for (let j = -R; j <= R; j++) for (let i = -R; i <= R; i++) {
+          const xx = x + i, yy = y + j; if (xx >= 0 && xx < bw && yy >= 0 && yy < bh) d[yy * bw + xx] = 1;
+        }
       }
+      const { comps } = componentes(d, bw, bh);
+      const anchas = comps.filter((c) => c.w - 2 * R >= 3 && c.h - 2 * R >= 2 && c.w >= c.h * 1.1 &&
+        c.area > 30 && c.area <= bw * bh * 0.2);
+      if (!anchas.length) continue;
+      const maxA = Math.max(...anchas.map((c) => c.area));
+      anchas.filter((c) => c.area >= maxA * 0.15).sort((a, b) => a.x0 - b.x0).slice(0, nombre === 'verde' ? 4 : 2)
+        .forEach((c) => out.push({
+          x: (c.x0 + R) * B, y: (c.y0 + R) * B, w: (c.w - 2 * R) * B, h: (c.h - 2 * R) * B,
+          modo: nombre, canal: M.canal, luz: M.luz,
+        }));
     }
-    const { comps } = componentes(d, bw, bh);
-    if (!comps.length) return null;
-    const maxA = Math.max(...comps.map((c) => c.area));
-    // Visores = bloques grandes y apaisados; el PESO es el de más a la izquierda
-    const vis = comps.filter((c) => c.area >= maxA * 0.3 && c.w >= c.h * 1.3 && c.area > 40)
-      .sort((a, b) => a.x0 - b.x0);
-    if (!vis.length) return null;
-    const c = vis[0];
-    return { x: (c.x0 + 1) * B, y: (c.y0 + 1) * B, w: (c.w - 2) * B, h: (c.h - 2) * B };
+    return out;     // verde primero, luego LED; dentro de cada tipo, de izquierda a derecha
   }
 
-  /* ---------------- 2) Analizar el visor ---------------- */
+  /* ---------------- 2) Analizar un visor ---------------- */
   function leerVisor(rgba, W, H, box, ang) {
-    // Recorte con margen (saca el marco negro del visor)
-    const mx = Math.round(box.w * 0.04), my = Math.round(box.h * 0.07);
+    // Recorte: el LCD pierde un margen (marco negro); el LED gana uno (los dígitos son el recorte)
+    const mx = Math.round(box.w * (box.luz ? -0.08 : 0.04)), my = Math.round(box.h * (box.luz ? -0.15 : 0.07));
     const sx = box.x + mx, sy = box.y + my, sw = box.w - 2 * mx, sh = box.h - 2 * my;
+    if (sw < 20 || sh < 10) return { ok: false, motivo: 'Visor demasiado pequeño.' };
     const hs = CFG.ALTO_VISOR, k = hs / sh, ws = Math.round(sw * k);
+    if (ws < 40 || ws > 4000) return { ok: false, motivo: 'Visor con forma extraña.' };
 
-    // Canal VERDE escalado (el fondo del LCD es verde brillante; los dígitos, oscuros)
+    // Canal de color del visor escalado y girado 'ang' grados (corrige fotos chuecas)
     const g = new Float32Array(ws * hs);
-    // 'ang' = giro (grados) para corregir fotos tomadas chuecas: se muestrea el visor ya enderezado
     const cx = sx + sw / 2, cy = sy + sh / 2, ca = Math.cos(ang * Math.PI / 180), sa = Math.sin(ang * Math.PI / 180);
+    const ch = box.canal;
     for (let y = 0; y < hs; y++) {
       for (let x = 0; x < ws; x++) {
         const u = (x + 0.5) / k - sw / 2, v = (y + 0.5) / k - sh / 2;
         const fx = clamp(cx + u * ca - v * sa - 0.5, 0, W - 1), fy = clamp(cy + u * sa + v * ca - 0.5, 0, H - 1);
         const x0 = Math.floor(fx), x1 = Math.min(W - 1, x0 + 1), tx = fx - x0;
         const y0 = Math.floor(fy), y1 = Math.min(H - 1, y0 + 1), ty = fy - y0;
-        const v00 = rgba[(y0 * W + x0) * 4 + 1], v10 = rgba[(y0 * W + x1) * 4 + 1];
-        const v01 = rgba[(y1 * W + x0) * 4 + 1], v11 = rgba[(y1 * W + x1) * 4 + 1];
+        const v00 = rgba[(y0 * W + x0) * 4 + ch], v10 = rgba[(y0 * W + x1) * 4 + ch];
+        const v01 = rgba[(y1 * W + x0) * 4 + ch], v11 = rgba[(y1 * W + x1) * 4 + ch];
         g[y * ws + x] = (v00 * (1 - tx) + v10 * tx) * (1 - ty) + (v01 * (1 - tx) + v11 * tx) * ty;
       }
     }
 
-    // Quitar reflejos: oscuridad = 1 - pixel / luz_local  (la luz local = máximo de la vecindad, suavizado)
-    let bg = filtroMax(g, ws, hs, Math.round(hs * 0.056));
-    bg = desenfoque(desenfoque(bg, ws, hs, Math.round(hs * 0.04)), ws, hs, Math.round(hs * 0.04));
     const osc = new Float32Array(ws * hs), tinta = new Uint8Array(ws * hs);
-    for (let i = 0; i < osc.length; i++) { osc[i] = clamp(1 - g[i] / Math.max(bg[i], 1), 0, 1); tinta[i] = osc[i] > 0.12 ? 1 : 0; }
+    if (box.luz) {
+      // LED: dígitos ENCENDIDOS sobre fondo oscuro. Se normaliza entre el fondo y los segmentos más brillantes.
+      const muestra = []; for (let i = 0; i < g.length; i += 5) muestra.push(g[i]);
+      muestra.sort((a, b) => a - b);
+      const lo = muestra[Math.floor(muestra.length * 0.1)], hi = muestra[Math.floor(muestra.length * 0.995)];
+      const rango = Math.max(hi - lo, 30);
+      for (let i = 0; i < osc.length; i++) { osc[i] = clamp((g[i] - lo) / rango, 0, 1); tinta[i] = osc[i] > 0.5 ? 1 : 0; }
+    } else {
+      // LCD: dígitos OSCUROS sobre fondo brillante. Quita reflejos: oscuridad = 1 - pixel / luz_local
+      let bg = filtroMax(g, ws, hs, Math.round(hs * 0.056));
+      bg = desenfoque(desenfoque(bg, ws, hs, Math.round(hs * 0.04)), ws, hs, Math.round(hs * 0.04));
+      for (let i = 0; i < osc.length; i++) { osc[i] = clamp(1 - g[i] / Math.max(bg[i], 1), 0, 1); tinta[i] = osc[i] > 0.12 ? 1 : 0; }
+    }
 
     // Componentes: segmentos (grandes), puntos (chicos) y basura (marco, flechitas)
     const { lab, comps } = componentes(tinta, ws, hs);
     const tocaBorde = (c) => c.x0 === 0 || c.y0 === 0 || c.x1 === ws - 1 || c.y1 === hs - 1;
-    const segs = comps.filter((c) => !tocaBorde(c) &&   // lo que toca el borde es marco o flechitas, no dígitos
+    const segs = comps.filter((c) => !tocaBorde(c) &&
       (c.h >= hs * 0.18 || c.w >= hs * 0.13) && c.area >= hs * hs * 0.004);
     if (!segs.length) return { ok: false, motivo: 'No se ven dígitos en el visor.' };
     const yTop = Math.min(...segs.map((c) => c.y0)), yBot = Math.max(...segs.map((c) => c.y1)), Hd = yBot - yTop + 1;
-    if (Hd < hs * 0.35) return { ok: false, motivo: 'Dígitos demasiado pequeños. Acerca la cámara.' };
+    if (Hd < hs * 0.35) return { ok: false, motivo: 'Dígitos demasiado pequeños. Acerque la cámara.' };
     const idSeg = new Set(segs.map((c) => c.id));
     const puntos = comps.filter((c) => !idSeg.has(c.id) && !tocaBorde(c) && c.w >= Hd * 0.04 && c.w <= Hd * 0.14 && c.h >= Hd * 0.04 &&
       c.h <= Hd * 0.14 && c.w / c.h > 0.65 && c.w / c.h < 1.5 && (c.y0 + c.y1) / 2 > yTop + Hd * 0.78);
 
-    // Inclinación (cursiva del LCD): probar ángulos y quedarse con el que hace las columnas más nítidas
+    // Inclinación (cursiva del LCD): probar valores y quedarse con el que hace las columnas más nítidas
     const yMid = (yTop + yBot) / 2, pts = [];
     for (let y = yTop; y <= yBot; y++) for (let x = 0; x < ws; x++) if (tinta[y * ws + x] && idSeg.has(lab[y * ws + x])) pts.push(x, y);
     let mejorS = 0, mejorScore = -1;
     for (let s = -0.1; s <= 0.4001; s += 0.02) {
-      const hist = new Int32Array(ws * 2 + 400), off = 200 + ws / 2 | 0;
+      const hist = new Int32Array(ws * 2 + 400);
       for (let i = 0; i < pts.length; i += 2) hist[Math.round(pts[i] + s * (pts[i + 1] - yMid)) + 200]++;
       let sc = 0; for (let i = 0; i < hist.length; i++) sc += hist[i] * hist[i];
       if (sc > mejorScore) { mejorScore = sc; mejorS = s; }
@@ -211,7 +250,7 @@
     cl.forEach((c, i) => { if (c.w >= Hd * 0.4) { L0 += c.x0 - idxs[i] * P; nL++; } });
     L0 = nL ? L0 / nL : ref0;
     const i0 = Math.min(...idxs), i1 = Math.max(...idxs);
-    if (i1 - i0 > 7) return { ok: false, motivo: 'Lectura confusa: demasiados dígitos.' };
+    if (i1 - i0 + 1 > CFG.MAX_CELDAS) return { ok: false, motivo: 'Lectura confusa: demasiados dígitos.' };
 
     // Leer cada celda: oscuridad media de cada segmento
     const celdas = [];
@@ -229,7 +268,7 @@
       celdas.push({ i, v, ref: (orden[0] + orden[1]) / 2 });
     }
     const refGlobal = Math.max(...celdas.map((c) => c.ref));
-    if (refGlobal < 0.06) return { ok: false, motivo: 'Dígitos muy tenues. Mejora la luz.' };
+    if (refGlobal < 0.06) return { ok: false, motivo: 'Dígitos muy tenues. Mejore la luz.' };
 
     let digitos = '', confs = [];
     for (const c of celdas) {
@@ -246,62 +285,76 @@
         return { dg, e };
       }).sort((p, q) => p.e - q.e);
       digitos += err[0].dg;
-      // confianza del dígito: qué tan claro ganó el mejor patrón frente al segundo
       confs.push(clamp((err[1].e - err[0].e) / 0.8, 0, 1) * 0.6 + clamp(1 - err[0].e / 2.0, 0, 1) * 0.4);
     }
 
-    // Punto decimal: un puntito abajo, entre dos celdas
-    let dec = CFG.DEC_DEFECTO, puntoVisto = false;
+    // Punto decimal: un puntito abajo, entre dos celdas. Si no se ve, el número es ENTERO (sin suponer decimales).
+    let dec = 0, puntoVisto = false;
     const cand = puntos.map((p) => {
-      const cx = (p.x0 + p.x1) / 2, cy = (p.y0 + p.y1) / 2;
-      return { area: p.area, i: Math.floor((cx + s * (cy - yMid) + off - L0) / P) };
+      const cx2 = (p.x0 + p.x1) / 2, cy2 = (p.y0 + p.y1) / 2;
+      return { area: p.area, i: Math.floor((cx2 + s * (cy2 - yMid) + off - L0) / P) };
     }).filter((p) => p.i >= i0 && p.i < i1).sort((p, q) => q.area - p.area);
     if (cand.length) { dec = i1 - cand[0].i; puntoVisto = true; }
     if (dec >= digitos.length) dec = Math.max(0, digitos.length - 1);
 
-    const texto = dec > 0 ? digitos.slice(0, digitos.length - dec) + '.' + digitos.slice(digitos.length - dec) : digitos;
+    let texto = dec > 0 ? digitos.slice(0, digitos.length - dec) + '.' + digitos.slice(digitos.length - dec) : digitos;
+    texto = texto.replace(/^0+(?=\d)/, '');                        // "0303" -> "303", "00.350" -> "0.350"
     const confianza = Math.round(100 * (confs.reduce((a, b) => a + b, 0) / confs.length) * (puntoVisto ? 1 : 0.9));
     return { ok: true, texto, valor: parseFloat(texto), confianza, puntoVisto, digitos: digitos.length };
   }
 
   /* ---------------- API pública ---------------- */
 
-  /** Núcleo puro (sin DOM): recibe píxeles RGBA. */
-  function analizar(rgba, W, H) {
-    const box = buscarVisorPeso(rgba, W, H);
-    if (!box) return { ok: false, motivo: 'No encontré el visor verde de la balanza. Acércate y encuádralo completo.' };
-    // Se lee el visor con varios giros y los intentos VOTAN: una lectura sola puede equivocarse
-    // (un reflejo confunde un 9 con un 4), pero varios giros distintos coincidiendo es evidencia fuerte.
-    const votos = {};
-    let ultimo = null;
-    for (const ang of [0, -3, 3, -6, 6, -9, 9]) {
-      const t = leerVisor(rgba, W, H, box, ang);
-      ultimo = ultimo || t;
-      if (!t.ok || t.confianza < 40 || !(t.valor >= 0 && t.valor <= CFG.MAX_KG)) continue;
-      const v = votos[t.texto] || (votos[t.texto] = { n: 0, suma: 0, r: t });
-      v.n++; v.suma += t.confianza;
-      if (v.n >= 3) break;                              // 3 coincidencias: suficiente
-    }
-    const ganador = Object.values(votos).sort((p, q) => q.n - p.n || q.suma - p.suma)[0];
-    if (!ganador) return { ok: false, motivo: (ultimo && ultimo.motivo) || 'No pude leer el peso. Repite la foto con el visor bien encuadrado y sin reflejos.' };
-    const factor = ganador.n >= 3 ? 1 : ganador.n === 2 ? 0.9 : 0.7;
-    const r = { ...ganador.r, confianza: Math.round((ganador.suma / ganador.n) * factor), votos: ganador.n };
+  /** Núcleo puro (sin DOM): recibe píxeles RGBA. opts.vivo = true usa menos giros (más rápido). */
+  function analizar(rgba, W, H, opts) {
+    opts = opts || {};
+    const angulos = opts.vivo ? CFG.ANGULOS_VIVO : CFG.ANGULOS;
+    const necesarios = opts.vivo ? 2 : 3;
 
-    if (!(r.valor >= 0 && r.valor <= CFG.MAX_KG)) return { ok: false, motivo: 'Lectura fuera de rango (' + r.texto + ').', texto: r.texto, valor: r.valor, confianza: r.confianza };
-    if (r.confianza < CFG.CONF_MIN) return { ...r, ok: false, motivo: 'Lectura poco clara (' + r.confianza + '%). Repite la foto sin reflejos.' };
-    return r;
+    const cands = buscarVisores(rgba, W, H);
+    if (!cands.length) return { ok: false, sinVisor: true, motivo: 'No encontré el visor de la balanza.' };
+
+    // Cada visor se lee con varios giros y los intentos VOTAN (un reflejo puede confundir un 9 con un 4,
+    // pero varios giros coincidiendo es evidencia fuerte). Se prueban todos los candidatos: el primero que se lee bien gana.
+    let primerMotivo = null, dudoso = null;
+    for (const box of cands) {
+      const votos = {};
+      for (const ang of angulos) {
+        const t = leerVisor(rgba, W, H, box, ang);
+        if (!t.ok) { primerMotivo = primerMotivo || t.motivo; continue; }
+        if (t.confianza < 40 || !isFinite(t.valor) || t.valor < 0) continue;
+        const v = votos[t.texto] || (votos[t.texto] = { n: 0, suma: 0, r: t });
+        v.n++; v.suma += t.confianza;
+        if (v.n >= necesarios) break;
+      }
+      const gan = Object.values(votos).sort((p, q) => q.n - p.n || q.suma - p.suma)[0];
+      if (!gan) continue;
+      const factor = gan.n >= 3 ? 1 : gan.n === 2 ? 0.9 : 0.7;
+      const r = { ...gan.r, confianza: Math.round((gan.suma / gan.n) * factor), votos: gan.n, modo: box.modo };
+      if (r.confianza >= CFG.CONF_MIN) return r;
+      dudoso = dudoso || r;
+    }
+    if (dudoso) return { ...dudoso, ok: false, motivo: 'Lectura poco clara (' + dudoso.confianza + '%).' };
+    return { ok: false, motivo: primerMotivo || 'No pude leer el peso.' };
   }
 
-  /** Recibe un Blob, canvas o imagen y devuelve la lectura. */
-  async function leerPeso(fuente) {
-    let bmp = fuente;
-    if (typeof Blob !== 'undefined' && fuente instanceof Blob) bmp = await createImageBitmap(fuente, { imageOrientation: 'from-image' });
-    const w0 = bmp.width || bmp.naturalWidth, h0 = bmp.height || bmp.naturalHeight;
-    const k = Math.min(1, CFG.LADO_MAX / Math.max(w0, h0));
+  /** Recibe un Blob, canvas, imagen o <video> y devuelve la lectura. */
+  async function leerPeso(fuente, opts) {
+    opts = opts || {};
+    let bmp = fuente, propio = false;
+    if (typeof Blob !== 'undefined' && fuente instanceof Blob) {
+      bmp = await createImageBitmap(fuente, { imageOrientation: 'from-image' });
+      propio = true;
+    }
+    const w0 = bmp.videoWidth || bmp.width || bmp.naturalWidth, h0 = bmp.videoHeight || bmp.height || bmp.naturalHeight;
+    if (!w0 || !h0) return { ok: false, motivo: 'Imagen vacía.' };
+    const lado = opts.vivo ? CFG.LADO_VIVO : CFG.LADO_MAX;
+    const k = Math.min(1, lado / Math.max(w0, h0));
     const c = document.createElement('canvas'); c.width = Math.round(w0 * k); c.height = Math.round(h0 * k);
     const ctx = c.getContext('2d', { willReadFrequently: true }); ctx.drawImage(bmp, 0, 0, c.width, c.height);
+    if (propio && bmp.close) bmp.close();
     const d = ctx.getImageData(0, 0, c.width, c.height);
-    return analizar(d.data, d.width, d.height);
+    return analizar(d.data, d.width, d.height, opts);
   }
 
   root.LectorBalanza = { leerPeso, analizar, CFG };
