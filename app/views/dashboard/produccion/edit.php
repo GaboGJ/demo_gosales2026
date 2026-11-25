@@ -290,63 +290,67 @@ $campoPeso = function (int $idp, string $tipo, string $medida, $valor, string $p
   </form>
 </div>
 
-<!-- ===== MODAL DE CÁMARA (todo en GRAMOS: sin selector de unidad) =====
-     IDs usados por edit.js: camSubtitulo, camVideo, camPreview, camCanvas, camArchivo, camError, camLectura,
-     camPeso, camTaper, camNeto, camSubir, camRepetir, camOtra, camUsar. NO existe camCapturar ni camUnidad. -->
+<!-- ===== MODAL DE CÁMARA (todo en GRAMOS) ===== -->
 <div class="modal fade" id="modalCamara" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
-    <div class="modal-content">
-      <div class="modal-header">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-fullscreen-sm-down">
+    <div class="modal-content border-radius-xl">
+
+      <div class="modal-header border-0 pb-0 px-3 px-md-4 pt-3 pt-md-4 align-items-start">
         <div>
-          <h5 class="modal-title mb-0">Foto de la balanza</h5>
-          <p class="text-sm text-secondary mb-0" id="camSubtitulo"></p>
+          <h5 class="modal-title font-weight-bolder text-dark mb-0">Foto de la balanza</h5>
+          <p class="text-xs text-secondary mb-0" id="camSubtitulo"></p>
         </div>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        <button type="button" class="btn btn-link text-dark p-0 mb-0 ms-auto" data-bs-dismiss="modal" aria-label="Cerrar">
+          <i class="material-symbols-rounded">close</i>
+        </button>
       </div>
 
-      <div class="modal-body">
-        <div class="ratio ratio-4x3 bg-dark rounded overflow-hidden">
-          <video id="camVideo" autoplay playsinline muted></video>
-          <img id="camPreview" class="d-none" alt="Foto de la balanza" style="object-fit:contain">
+      <div class="modal-body px-3 px-md-4 py-2">
+        <div class="ratio ratio-4x3 bg-dark border-radius-lg overflow-hidden">
+          <video id="camVideo" class="object-fit-cover" autoplay playsinline muted></video>
+          <img id="camPreview" class="d-none object-fit-contain" alt="Foto de la balanza">
         </div>
         <canvas id="camCanvas" class="d-none"></canvas>
         <input type="file" id="camArchivo" accept="image/*" class="d-none">
 
-        <div id="camLectura" class="text-sm font-weight-bold mt-2 d-none"></div>
-        <div id="camError" class="alert alert-danger text-white text-sm py-2 mt-2 d-none" role="alert"></div>
+        <!-- Estado (una línea con icono; lo llena edit.js) -->
+        <div id="camLectura" class="d-none"></div>
+        <div id="camError" class="alert alert-danger text-white text-xs py-2 px-3 mt-2 mb-0 d-none" role="alert"></div>
 
-        <!-- Siempre visibles: sirven aunque la lectura automática falle. Todo en gramos. -->
+        <!-- Siempre visibles: sirven aunque la lectura automática falle -->
         <div class="row g-2 mt-1">
           <div class="col-6">
-            <div class="input-group input-group-outline is-filled">
-              <label class="form-label">Peso de la balanza (g)</label>
-              <input type="text" id="camPeso" class="form-control" inputmode="numeric" autocomplete="off">
-            </div>
+            <label class="text-xxs text-secondary font-weight-bold text-uppercase mb-1 ms-0">Peso balanza (g)</label>
+            <input type="text" id="camPeso" class="form-control border px-2" inputmode="numeric" autocomplete="off" placeholder="0">
           </div>
           <div class="col-6">
-            <div class="input-group input-group-outline is-filled">
-              <label class="form-label">Descontar taper (g)</label>
-              <input type="text" id="camTaper" class="form-control" inputmode="numeric" value="0" autocomplete="off">
-            </div>
+            <label class="text-xxs text-secondary font-weight-bold text-uppercase mb-1 ms-0">Descontar taper (g)</label>
+            <input type="text" id="camTaper" class="form-control border px-2" inputmode="numeric" autocomplete="off" value="0">
           </div>
         </div>
-        <p id="camNeto" class="text-sm font-weight-bold mt-2 mb-0"></p>
+        <p id="camNeto" class="text-xs font-weight-bold mt-2 mb-0"></p>
       </div>
 
-      <div class="modal-footer flex-wrap gap-2 justify-content-between">
-        <div class="d-flex gap-2">
-          <button type="button" id="camSubir" class="btn btn-sm btn-outline-secondary mb-0">
-            <i class="material-symbols-rounded align-middle">photo_library</i> Galería / archivo
+      <!-- En móvil: botones principales arriba, a todo el ancho. En escritorio: secundarios a la izquierda y principales a la derecha -->
+      <div class="modal-footer border-0 pt-0 px-3 px-md-4 pb-3 pb-md-4 d-flex flex-column-reverse flex-sm-row justify-content-sm-between gap-2">
+        <div class="d-flex gap-2 w-100 w-sm-auto">
+          <button type="button" id="camSubir" class="btn btn-outline-secondary mb-0 px-3 flex-fill flex-sm-grow-0 d-inline-flex align-items-center justify-content-center gap-1">
+            <i class="material-symbols-rounded">photo_library</i><span class="text-xs">Galería</span>
           </button>
-          <button type="button" id="camRepetir" class="btn btn-sm btn-outline-secondary mb-0 d-none">
-            <i class="material-symbols-rounded align-middle">refresh</i> Repetir
+          <button type="button" id="camRepetir" class="btn btn-outline-secondary mb-0 px-3 flex-fill flex-sm-grow-0 d-none align-items-center justify-content-center gap-1">
+            <i class="material-symbols-rounded">refresh</i><span class="text-xs">Repetir</span>
           </button>
         </div>
-        <div class="d-flex gap-2">
-          <button type="button" id="camOtra" class="btn btn-sm btn-outline-primary mb-0 d-none" disabled>Sumar y otra</button>
-          <button type="button" id="camUsar" class="btn btn-sm bg-gradient-primary mb-0 d-none" disabled>Sumar</button>
+        <div class="d-flex gap-2 w-100 w-sm-auto">
+          <button type="button" id="camOtra" class="btn btn-outline-primary mb-0 px-3 flex-fill flex-sm-grow-0 d-none align-items-center justify-content-center gap-1" disabled>
+            <i class="material-symbols-rounded">add_a_photo</i><span class="text-xs">Sumar y otra</span>
+          </button>
+          <button type="button" id="camUsar" class="btn bg-gradient-primary text-white mb-0 px-4 flex-fill flex-sm-grow-0 d-none align-items-center justify-content-center gap-1" disabled>
+            <i class="material-symbols-rounded">add</i><span class="text-xs">Sumar</span>
+          </button>
         </div>
       </div>
+
     </div>
   </div>
 </div>
@@ -369,7 +373,9 @@ $campoPeso = function (int $idp, string $tipo, string $medida, $valor, string $p
           <h5 class="modal-title font-weight-bolder text-dark mb-0" id="tituloFotos">Fotos de la balanza</h5>
           <p class="text-xs text-secondary mb-0" id="fotosSubtitulo"></p>
         </div>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        <button type="button" class="btn btn-link text-dark p-0 mb-0 ms-auto" data-bs-dismiss="modal" aria-label="Cerrar">
+  <i class="material-symbols-rounded">close</i>
+</button>
       </div>
       <div class="modal-body px-3 px-md-4">
         <div id="fotosGrid" class="d-flex flex-wrap gap-3"></div>

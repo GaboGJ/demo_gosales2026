@@ -22,7 +22,9 @@ $turnoActual = $h < 14 ? 'Mañana' : ($h < 19 ? 'Tarde' : 'Noche');
           <h5 class="modal-title font-weight-bolder text-dark mb-0" id="tituloNuevaProduccion">Abrir Producción</h5>
           <p class="text-xs text-secondary mb-0">Indique los datos iniciales; luego registrará la producción desde la edición.</p>
         </div>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        <button type="button" class="btn btn-link text-dark p-0 mb-0 ms-auto" data-bs-dismiss="modal" aria-label="Cerrar">
+  <i class="material-symbols-rounded">close</i>
+</button>
       </div>
 
       <div class="modal-body px-4">

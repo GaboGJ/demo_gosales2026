@@ -285,13 +285,14 @@
     el.error.textContent = txt || '';
     el.error.classList.toggle('d-none', !txt);
   }
-  /** Mensaje de estado bajo el video: tipo = 'info' | 'ok' | 'aviso' */
-  function mensaje(txt, tipo) {
-    const cls = { info: 'text-secondary', ok: 'text-success', aviso: 'text-warning' }[tipo || 'info'];
-    el.lectura.className = 'text-sm font-weight-bold mt-2 ' + cls;
-    el.lectura.textContent = txt || '';
-    el.lectura.classList.toggle('d-none', !txt);
-  }
+/** Estado bajo el video (una línea con icono): tipo = 'info' | 'ok' | 'aviso' */
+function mensaje(txt, tipo) {
+  const t = { info: ['text-secondary', 'info'], ok: ['text-success', 'check_circle'], aviso: ['text-warning', 'warning'] }[tipo || 'info'];
+  el.lectura.className = 'd-flex align-items-start gap-1 text-xs font-weight-bold mt-2 ' + t[0];
+  el.lectura.innerHTML = '<i class="material-symbols-rounded text-sm">' + t[1] + '</i><span></span>';
+  el.lectura.lastChild.textContent = txt || '';
+  el.lectura.classList.toggle('d-none', !txt);
+}
 
   function subtitulo() {
     const n = camCtx.m.fotos[camCtx.tipo].length;
@@ -310,13 +311,13 @@
     const { peso, taper, neto } = calcularNeto();
     let ok = false, txt = '';
     if (el.peso.value.trim() === '' || peso <= 0) {
-      txt = 'Escriba el peso en gramos que muestra la balanza (o enfoque el visor).';
+        txt = 'Escriba el peso en gramos de la balanza.';
     } else if (neto <= 0) {
-      txt = 'El taper (' + taper + ' g) debe ser menor que el peso.';
+        txt = 'El taper (' + taper + ' g) debe ser menor al peso.';
     } else {
-      txt = 'Neto: ' + neto.toLocaleString('es-BO') + ' g' + (taper > 0 ? ' (' + peso + ' − ' + taper + ')' : '') +
-        (camCtx && camCtx.m.medida === 'kg' ? ' → se suma ' + aUnidadProducto(neto, 'g', 'kg').toLocaleString('es-BO', { maximumFractionDigits: 3 }) + ' kg' : '');
-      ok = true;
+        txt = 'Neto: ' + neto.toLocaleString('es-BO') + ' g' + (taper > 0 ? ' (' + peso + ' − ' + taper + ')' : '') +
+        (camCtx && camCtx.m.medida === 'kg' ? ' → ' + aUnidadProducto(neto, 'g', 'kg').toLocaleString('es-BO', { maximumFractionDigits: 3 }) + ' kg' : '');
+        ok = true;
     }
     el.neto.textContent = txt;
     el.neto.classList.toggle('text-danger', !ok && neto <= 0 && peso > 0);
@@ -354,15 +355,15 @@
     el.repetir.classList.remove('d-none');
     el.otra.classList.remove('d-none'); el.usar.classList.remove('d-none');
     if (lectura) aplicarLectura(lectura);
-    else if (manual) mensaje('Foto tomada. Verifique que el peso escrito coincida con la balanza.', 'info');
+    else if (manual) mensaje('Foto tomada. Verifique que el peso escrito', 'info');
     else leerPesoDeFoto(blob);
     actualizarSumar();
   }
 
   function aplicarLectura(r, dudosa) {
     el.peso.value = r.texto;     // r.texto ya viene en gramos
-    if (dudosa) mensaje('Lectura poco clara (' + r.confianza + '%): ' + r.texto + ' g. Verifique el número en la foto y corríjalo si hace falta.', 'aviso');
-    else mensaje('Peso leído: ' + r.texto + ' g · confianza ' + r.confianza + '%.', 'ok');
+    if (dudosa) mensaje('Lectura dudosa: ' + r.texto + ' g (' + r.confianza + '%). Verifique y corrija.', 'aviso');
+    else mensaje('Peso leído: ' + r.texto + ' g · ' + r.confianza + '%.', 'ok');
   }
 
   /** Lee el peso de una foto ya tomada. Si falla, los campos siguen habilitados para escribirlo a mano. */
@@ -377,11 +378,11 @@
       if (id !== lecturaId || !camCtx) return;
       if (r.ok) aplicarLectura(r);
       else if (r.texto) aplicarLectura(r, true);
-      else mensaje('No pude leer el peso automáticamente. Escriba en el campo el número que se ve en la foto.', 'aviso');
+      else mensaje('No pude leer. Escriba el peso que ve en la foto.', 'aviso');
       fin();
     }).catch(() => {
       if (id !== lecturaId) return;
-      mensaje('No pude leer el peso automáticamente. Escriba en el campo el número que se ve en la foto.', 'aviso');
+      mensaje('No pude leer. Escriba el peso que ve en la foto..', 'aviso');
       fin();
     });
   }
@@ -418,11 +419,11 @@
           detenerCamara();
           modoPrevia(blob, r);
         } else {
-          mensaje('Detectado ' + r.texto + ' g... mantenga quieta la cámara (' + estable.n + '/' + ESTABLE_N + ')', 'info');
+          mensaje('Detectado ' + r.texto + ' g . mantenga quieta (' + estable.n + '/' + ESTABLE_N + ')', 'info');
         }
       } else {
         estable = { texto: null, n: 0 };
-        mensaje(r.sinVisor ? 'Buscando el visor de la balanza... enfóquelo de frente y con buena luz.'
+        mensaje(r.sinVisor ? 'Buscando el visor... enfóquelo de frente y con buena luz.'
           : 'Visor detectado, esperando un peso estable...', 'info');
       }
     } catch (e) { /* un cuadro fallido no detiene la búsqueda */ }
@@ -436,18 +437,18 @@
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       soloArchivo(true);
       mensaje('', 'info');
-      mostrarError('La cámara en vivo no está disponible (requiere HTTPS). Use "Galería / archivo" para tomar la foto o elegir una ya tomada.');
+      mostrarError('La cámara no está disponible. Use "Galería / archivo" para elegir una ya tomada.');
       return;
     }
     try {
       stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
       el.video.srcObject = stream;
-      mensaje('Enfoque el visor de la balanza: la foto se toma sola al leer un peso estable.', 'info');
+      mensaje('Enfoque el visor: la foto se toma sola al leer un peso estable.', 'info');
       iniciarAuto();
     } catch (e) {
       soloArchivo(true);
       mensaje('', 'info');
-      mostrarError('No se pudo abrir la cámara. Revise el permiso o use "Galería / archivo".');
+      mostrarError('No se pudo abrir la cámara. Use "Galería / archivo".');
     }
   }
 

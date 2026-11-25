@@ -103,7 +103,9 @@ $enEdicion = $enEdicion ?? false;
           <h5 class="modal-title font-weight-bolder text-dark mb-0" id="tituloPlanilla">Planilla de Producción</h5>
           <p class="text-xs text-secondary mb-0">Vista de la planilla tal como va el registro del turno.</p>
         </div>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+       <button type="button" class="btn btn-link text-dark p-0 mb-0 ms-auto" data-bs-dismiss="modal" aria-label="Cerrar">
+  <i class="material-symbols-rounded">close</i>
+</button>
       </div>
 
       <div class="modal-body px-4" id="planillaImprimible">
