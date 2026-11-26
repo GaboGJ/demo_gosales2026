@@ -66,25 +66,36 @@ $campoPeso = function (int $idp, string $tipo, string $medida, $valor, string $p
       </button>
     <?php endif; ?>
   </div>
-  <div class="mt-1" data-fotos="<?= $tipo; ?>"></div>
+  <div class="mt-1 text-center" data-fotos="<?= $tipo; ?>"></div>
   <?php
 };
 ?>
 <style>
   /* ===== Campos (entrada / producción / existencia) ===== */
-  #datatable-edicion .campo { display: flex; align-items: stretch; height: 40px; background: #fff; border: 1px solid #d2d6da;
-    border-radius: .5rem; overflow: hidden; transition: border-color .15s, box-shadow .15s; }
-  #datatable-edicion .campo:focus-within { border-color: #e91e63; box-shadow: 0 0 0 .15rem rgba(233,30,99,.15); }
-  #datatable-edicion .campo-input { flex: 1 1 auto; min-width: 0; width: 100%; border: 0; outline: 0; box-shadow: none; background: transparent;
-    padding: 0 .5rem; text-align: center; font-size: .875rem; font-weight: 600; color: #344767; }
+  #datatable-edicion .campo {
+    display: flex; align-items: stretch; height: 38px; background: #fff;
+    border: 1px solid #d2d6da; border-radius: .5rem; overflow: hidden;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  #datatable-edicion .campo:focus-within {
+    border-color: #e91e63; box-shadow: 0 0 0 .15rem rgba(233,30,99,.15);
+  }
+  #datatable-edicion .campo-input {
+    flex: 1 1 auto; min-width: 0; width: 100%; border: 0; outline: 0;
+    box-shadow: none; background: transparent; padding: 0 .5rem;
+    text-align: center; font-size: .82rem; font-weight: 600; color: #344767;
+  }
   #datatable-edicion .campo-input::placeholder { font-weight: 400; color: #adb5bd; }
   #datatable-edicion .campo-input[readonly] { background: #f8f9fa; color: #67748e; }
-  #datatable-edicion .campo-unidad { display: flex; align-items: center; padding: 0 .6rem; background: #f8f9fa; border-left: 1px solid #e9ecef;
-    font-size: .72rem; font-weight: 700; color: #67748e; }
-  #datatable-edicion .campo-btn { flex: 0 0 42px; display: flex; align-items: center; justify-content: center; margin: 0; padding: 0;
-    border: 0; border-left: 1px solid #e9ecef; cursor: pointer; transition: background .15s; }
-  #datatable-edicion .campo-btn i { font-size: 1.15rem; line-height: 1; }
-  #datatable-edicion .campo-btn-foto { background: linear-gradient(195deg, #ec407a, #d81b60); color: #fff; border-left: 0; }
+  #datatable-edicion .campo-btn {
+    flex: 0 0 38px; display: flex; align-items: center; justify-content: center;
+    margin: 0; padding: 0; border: 0; border-left: 1px solid #e9ecef;
+    cursor: pointer; transition: background .15s;
+  }
+  #datatable-edicion .campo-btn i { font-size: 1.05rem; line-height: 1; }
+  #datatable-edicion .campo-btn-foto {
+    background: linear-gradient(195deg, #ec407a, #d81b60); color: #fff; border-left: 0;
+  }
   #datatable-edicion .campo-btn-foto:hover { filter: brightness(1.08); }
   #datatable-edicion .campo-btn-lock { background: #f8f9fa; color: #67748e; }
   #datatable-edicion .campo-btn-lock:hover:not(:disabled) { background: #e9ecef; }
@@ -92,21 +103,33 @@ $campoPeso = function (int $idp, string $tipo, string $medida, $valor, string $p
   #datatable-edicion .campo-btn-lock:disabled { cursor: not-allowed; opacity: .5; }
 
   /* ===== Fotos tomadas: miniaturas juntas + último peso (una sola línea) ===== */
-  #datatable-edicion .foto-strip { display: inline-flex; align-items: center; gap: .5rem; max-width: 100%; margin: 0; padding: 2px 10px 2px 2px;
-    background: #fff; border: 1px solid #e9ecef; border-radius: 999px; cursor: pointer; }
+  #datatable-edicion .foto-strip {
+    display: inline-flex; align-items: center; gap: .45rem; max-width: 100%;
+    margin: 0; padding: 2px 8px 2px 2px; background: #fff;
+    border: 1px solid #e9ecef; border-radius: 999px; cursor: pointer;
+  }
   #datatable-edicion .foto-strip:hover { border-color: #e91e63; }
   #datatable-edicion .foto-grupo { display: inline-flex; align-items: center; }
   #datatable-edicion .foto-grupo > * + * { margin-left: -8px; }
-  #datatable-edicion .foto-av, #datatable-edicion .foto-mas { width: 26px; height: 26px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px #e9ecef; }
+  #datatable-edicion .foto-av, #datatable-edicion .foto-mas {
+    width: 24px; height: 24px; border-radius: 50%;
+    border: 2px solid #fff; box-shadow: 0 0 0 1px #e9ecef;
+  }
   #datatable-edicion .foto-av { object-fit: cover; display: block; }
-  #datatable-edicion .foto-mas { display: inline-flex; align-items: center; justify-content: center; background: #344767; color: #fff; font-size: .6rem; font-weight: 700; }
-  #datatable-edicion .foto-peso { font-size: .75rem; font-weight: 700; color: #344767; white-space: nowrap; }
+  #datatable-edicion .foto-mas {
+    display: inline-flex; align-items: center; justify-content: center;
+    background: #344767; color: #fff; font-size: .58rem; font-weight: 700;
+  }
+  #datatable-edicion .foto-peso {
+    font-size: .72rem; font-weight: 700; color: #344767; white-space: nowrap;
+  }
 
-  /* ===== Tabla: comportamiento normal del DataTable responsive (con el "+" para desplegar) ===== */
-  #datatable-edicion td { padding-top: .85rem; padding-bottom: .85rem; vertical-align: top; }
-  #datatable-edicion tbody tr { border-bottom: 1px solid #f0f2f5; }
-  #datatable-edicion .celda-campo { width: 100%; max-width: 230px; margin: 0 auto; }
-  #datatable-edicion .col-salida { min-width: 110px; }
+  /* ===== Tabla alineada al estilo de index.php ===== */
+  #datatable-edicion td {
+    padding-top: .55rem; padding-bottom: .55rem; vertical-align: middle;
+  }
+  #datatable-edicion .celda-campo { width: 100%; max-width: 210px; margin: 0 auto; }
+  #datatable-edicion .col-salida { min-width: 115px; }
   #datatable-edicion tr.fila-ajustada > td { background: #fff8e1; }
 
   /* Fila desplegada (la que muestra el "+") */
@@ -123,7 +146,7 @@ $campoPeso = function (int $idp, string $tipo, string $medida, $valor, string $p
     .prod-edit .cab-titulo { font-size: 1rem; }
     .prod-edit .cab-meta { column-gap: .75rem !important; row-gap: .15rem !important; font-size: .7rem !important; }
     .prod-edit .cab-meta .material-symbols-rounded { font-size: .95rem !important; }
-    .prod-edit .reg-card .card-header { padding: .75rem .75rem 0 !important; }
+    .prod-edit .reg-card .card-header { padding: .75rem !important; }
     .prod-edit .reg-card .card-header h6 { font-size: .9rem; margin-bottom: .15rem !important; }
     .prod-edit .reg-card .card-header p { font-size: .7rem !important; line-height: 1.3; }
     .prod-edit .reg-card .card-header .reg-progreso { margin-top: .5rem !important; }
@@ -132,17 +155,18 @@ $campoPeso = function (int $idp, string $tipo, string $medida, $valor, string $p
     .prod-edit .cab-card, .prod-edit .reg-card { margin-bottom: .6rem !important; }
   }
 </style>
-<div class="container-fluid prod-edit pt-3 pb-5 flex-grow-1">
+
+<div class="container-fluid prod-edit py-3 flex-grow-1">
 
   <!-- Aviso (en modo demo muestra lo que haría el servidor) -->
   <div id="aviso-demo" class="alert text-white d-none" role="alert"><span class="text-sm font-weight-bold"></span></div>
 
   <!-- CABECERA -->
-  <div class="card cab-card shadow-xs border-radius-xl mb-3">
-    <div class="card-body p-3 p-md-4">
-      <div class="d-flex align-items-center flex-wrap gap-2 mb-1 mb-md-2">
-        <h5 class="cab-titulo font-weight-bolder text-dark mb-0">Producción #<?= str_pad($idProd, 5, '0', STR_PAD_LEFT); ?></h5>
-        <span class="badge badge-sm bg-gradient-warning"><?= htmlspecialchars($produccion['estado']); ?></span>
+  <div class="card cab-card border-0 shadow-sm border-radius-xl mb-3">
+    <div class="card-body p-3">
+      <div class="d-flex align-items-center flex-wrap gap-2 mb-1">
+        <h4 class="cab-titulo font-weight-bolder text-dark mb-0">Producción #<?= str_pad($idProd, 5, '0', STR_PAD_LEFT); ?></h4>
+        <span class="badge badge-sm bg-gradient-warning border-radius-pill px-3 py-1"><?= htmlspecialchars($produccion['estado']); ?></span>
       </div>
       <div class="cab-meta d-flex flex-wrap gap-2 gap-md-3 text-xs text-secondary">
         <?php foreach ($meta as [$icono, $texto]): ?>
@@ -159,9 +183,9 @@ $campoPeso = function (int $idp, string $tipo, string $medida, $valor, string $p
     <input type="hidden" name="id_produccion" value="<?= $idProd; ?>">
     <div id="campos-envio" class="d-none"></div>
 
-    <div class="card reg-card shadow-xs border-radius-xl overflow-hidden mb-4">
+    <div class="card reg-card border-0 shadow-sm border-radius-xl overflow-hidden mb-4">
 
-      <div class="card-header p-3 p-md-4 pb-0">
+      <div class="card-header bg-white p-3">
         <h6 class="font-weight-bolder text-dark mb-1">Registro del turno</h6>
         <p class="text-xs text-secondary mb-0 d-md-none">
           <b>Producción</b> se suma al acumulado; <b>Existencia</b> es el conteo actual. Una foto de balanza por recipiente.
@@ -186,17 +210,15 @@ $campoPeso = function (int $idp, string $tipo, string $medida, $valor, string $p
         </div>
       </div>
 
-      <div class="table-responsive p-0">
-        <table id="datatable-edicion" class="table align-items-center mb-0">
+      <div class="table-responsive px-3 pb-3">
+        <table id="datatable-edicion" class="table table-borderless align-items-center mb-0 w-100">
           <thead>
-            <!-- Producto siempre visible (class="all"). Las demás columnas se ocultan según data-priority
-                 (1 = la última en ocultarse) y se ven al tocar el "+" de la fila. -->
             <tr>
-              <th class="all text-uppercase text-secondary text-xxs font-weight-bolder opacity-7">Producto</th>
-              <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 text-center">Entrada</th>
-              <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 text-center">Producción (+)</th>
-              <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 text-center">Existencia</th>
-              <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 text-center pe-3 pe-md-4">Salida / Consumo</th>
+              <th class="all text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 py-2">Producto</th>
+              <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 text-center py-2">Entrada</th>
+              <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 text-center py-2">Producción (+)</th>
+              <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 text-center py-2">Existencia</th>
+              <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 text-center py-2 col-salida">Salida / Consumo</th>
             </tr>
           </thead>
           <tbody>
@@ -208,20 +230,20 @@ $campoPeso = function (int $idp, string $tipo, string $medida, $valor, string $p
               <tr data-id="<?= $idp; ?>">
 
                 <!-- Producto -->
-                <td class="celda-producto" data-label="Producto">
-                  <div class="d-flex align-items-center gap-2 pt-1">
-                    <div class="avatar avatar-sm bg-gradient-primary border-radius-md d-flex align-items-center justify-content-center flex-shrink-0 text-white">
-                      <i class="material-symbols-rounded text-sm">inventory_2</i>
+                <td class="celda-producto py-2" data-label="Producto">
+                  <div class="d-flex align-items-center gap-3">
+                    <div class="avatar avatar-md bg-gradient-primary border-radius-lg shadow-xs d-flex align-items-center justify-content-center flex-shrink-0 text-white">
+                      <i class="material-symbols-rounded">inventory_2</i>
                     </div>
-                    <div class="d-flex flex-column">
-                      <span class="text-sm font-weight-bold text-dark"><?= htmlspecialchars($it['producto']); ?></span>
+                    <div>
+                      <h6 class="mb-0 text-sm font-weight-bold text-dark"><?= htmlspecialchars($it['producto']); ?></h6>
                       <span class="text-xxs text-secondary">Unidad: <?= $med; ?></span>
                     </div>
                   </div>
                 </td>
 
                 <!-- Entrada (bloqueada; solo el encargado puede desbloquearla) -->
-                <td data-label="Entrada">
+                <td class="py-2" data-label="Entrada">
                   <div class="celda-campo">
                     <div class="campo">
                       <input type="text" inputmode="decimal" autocomplete="off" data-id="<?= $idp; ?>"
@@ -236,24 +258,24 @@ $campoPeso = function (int $idp, string $tipo, string $medida, $valor, string $p
                 </td>
 
                 <!-- Producción a agregar -->
-                <td data-label="Producción (+)">
+                <td class="py-2" data-label="Producción (+)">
                   <div class="celda-campo">
                     <?php $campoPeso($idp, 'produccion', $it['medida'], '', '0'); ?>
                   </div>
                 </td>
 
                 <!-- Existencia -->
-                <td data-label="Existencia">
+                <td class="py-2" data-label="Existencia">
                   <div class="celda-campo">
                     <?php $campoPeso($idp, 'existencia', $it['medida'], $exis, 'Sin contar'); ?>
                   </div>
                 </td>
 
                 <!-- Salida / consumo -->
-                <td class="text-center pe-3 pe-md-4 col-salida" data-label="Salida / Consumo">
-                  <div class="salida-wrap pt-2">
+                <td class="text-center py-2 col-salida" data-label="Salida / Consumo">
+                  <div class="salida-wrap">
                     <div>
-                      <span class="text-lg font-weight-bolder text-primary out-salida">—</span>
+                      <span class="text-sm font-weight-bolder text-primary out-salida">—</span>
                       <span class="text-xxs text-secondary"><?= $med; ?></span>
                     </div>
                     <div class="text-xxs text-danger font-weight-bold out-aviso d-none">La existencia supera entrada + producción</div>
@@ -266,7 +288,7 @@ $campoPeso = function (int $idp, string $tipo, string $medida, $valor, string $p
       </div>
 
       <!-- MOTIVO DE AJUSTE (aparece si el encargado modifica alguna entrada) -->
-      <div id="bloque-motivo" class="px-3 px-md-4 pt-3 d-none">
+      <div id="bloque-motivo" class="px-3 pb-3 d-none">
         <div class="alert alert-warning text-white mb-0" role="alert">
           <div class="d-flex align-items-center gap-2 mb-2">
             <i class="material-symbols-rounded">warning</i>
@@ -277,7 +299,7 @@ $campoPeso = function (int $idp, string $tipo, string $medida, $valor, string $p
         </div>
       </div>
 
-      <div class="card-footer p-3 p-md-4 d-flex flex-column flex-sm-row justify-content-end gap-2 border-top">
+      <div class="card-footer bg-white p-3 d-flex flex-column flex-sm-row justify-content-end gap-2 border-top">
         <button type="submit" name="accion" value="guardar" class="btn btn-outline-primary mb-0 px-4 d-inline-flex align-items-center gap-2 justify-content-center">
           <i class="material-symbols-rounded text-sm">save</i>Guardar avance
         </button>
@@ -299,9 +321,7 @@ $campoPeso = function (int $idp, string $tipo, string $medida, $valor, string $p
           <h5 class="modal-title mb-0">Foto de la balanza</h5>
           <p class="text-sm text-secondary mb-0" id="camSubtitulo"></p>
         </div>
-          <button type="button" class="btn btn-link text-dark p-0 mb-0 ms-auto" data-bs-dismiss="modal" aria-label="Cerrar">
-  <i class="material-symbols-rounded">close</i>
-</button>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
       </div>
 
       <div class="modal-body">
@@ -376,9 +396,9 @@ $campoPeso = function (int $idp, string $tipo, string $medida, $valor, string $p
       </div>
       <div class="modal-footer border-0 pt-0 px-3 px-md-4 pb-3 pb-md-4 d-flex justify-content-between align-items-center">
         <span class="text-sm text-secondary">Total sumado: <b id="fotosTotal" class="text-dark"></b></span>
-         <button type="button" class="btn btn-link text-dark p-0 mb-0 ms-auto" data-bs-dismiss="modal" aria-label="Cerrar">
-  <i class="material-symbols-rounded">close</i>
-</button>
+        <button type="button" class="btn btn-link text-dark p-0 mb-0 ms-auto" data-bs-dismiss="modal" aria-label="Cerrar">
+          <i class="material-symbols-rounded">close</i>
+        </button>
       </div>
     </div>
   </div>

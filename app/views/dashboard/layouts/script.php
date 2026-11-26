@@ -112,24 +112,39 @@
 
 <!-- INICIALIZACIÓN DE TABLAS POR VISTA (cada una solo actúa si existe en la página) -->
 <script>
-    $(document).ready(function () {
-        console.log('jQuery:', typeof $, '| DataTable:', typeof $.fn.DataTable);
+$(document).ready(function () {
+    console.log('jQuery:', typeof $, '| DataTable:', typeof $.fn.DataTable);
+    try {
+        inicializarDataTable('#datatable-produccion', { ordering: false, placeholder: 'Buscar produccion...' });
+        console.log('DataTable de producción inicializado');
+    } catch (e) {
+        console.error('Fallo al inicializar:', e);
+    }
+
+    try {
+        inicializarDataTable('#datatable-edicion', { ordering: false, placeholder: 'Buscar edición...' });
+        console.log('DataTable de edición inicializado');
+    } catch (e) {
+        console.error('Fallo al inicializar:', e);
+    }
+
+    $('#modalPlanilla').on('shown.bs.modal', function () {
         try {
-            inicializarDataTable('#datatable-produccion', { ordering: false, placeholder: 'Buscar produccion...' });
-            console.log('DataTable de producción inicializado');
+            var dtShow = inicializarDataTable('#datatable-show', {
+                ordering: false,
+                pageLength: 5,
+                placeholder: 'Buscar producto...'
+            });
+            if (dtShow && dtShow.columns) {
+                dtShow.columns.adjust();
+                if (dtShow.responsive) dtShow.responsive.recalc();
+            }
+            console.log('DataTable de show inicializado');
         } catch (e) {
-            console.error('Fallo al inicializar:', e);
+            console.error('Fallo al inicializar show:', e);
         }
     });
-       $(document).ready(function () {
-        console.log('jQuery:', typeof $, '| DataTable:', typeof $.fn.DataTable);
-        try {
-            inicializarDataTable('#datatable-edicion', { ordering: false, placeholder: 'Buscar edición...' });
-            console.log('DataTable de edición inicializado');
-        } catch (e) {
-            console.error('Fallo al inicializar:', e);
-        }
-    });
+});
 </script>
 
 <script>
